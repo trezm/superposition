@@ -188,7 +188,7 @@ export default function Terminal({ sessionId, visible = true, onIdleChange }: Te
         if (disposed.current) return;
         if (e.code === 1000) {
           sessionEnded.current = true;
-          onIdleChangeRef.current?.(false);
+          onIdleChangeRef.current?.(true);
           term.write("\r\n\x1b[90m[Session ended]\x1b[0m\r\n");
           return;
         }
