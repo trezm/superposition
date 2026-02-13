@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { api } from "../lib/api";
 import Terminal from "../components/Terminal";
 import NewSessionModal from "../components/NewSessionModal";
@@ -19,6 +19,8 @@ export default function Sessions() {
   const [openTabs, setOpenTabs] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [idleSessions, setIdleSessions] = useState<Set<string>>(new Set());
+  const notifiedSessions = useRef<Set<string>>(new Set());
 
   const load = useCallback(() => {
     api.getSessions().then(setSessions).catch(console.error);
@@ -29,6 +31,50 @@ export default function Sessions() {
     const interval = setInterval(load, 5000);
     return () => clearInterval(interval);
   }, [load]);
+
+  // Browser tab title when sessions are idle
+  useEffect(() => {
+    document.title = idleSessions.size > 0 ? "(!) Superposition" : "Superposition";
+  }, [idleSessions]);
+
+  // OS notifications for idle sessions
+  useEffect(() => {
+    for (const sessionId of idleSessions) {
+      if (sessionId === activeTab) continue;
+      if (notifiedSessions.current.has(sessionId)) continue;
+
+      notifiedSessions.current.add(sessionId);
+      const session = sessions.find((s) => s.id === sessionId);
+      const label = session
+        ? `${session.repo_name}/${session.branch}`
+        : sessionId;
+
+      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+        const n = new Notification("Superposition", {
+          body: `${label} is waiting for input`,
+        });
+        n.onclick = () => {
+          window.focus();
+          setActiveTab(sessionId);
+        };
+      } else if (typeof Notification !== "undefined" && Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+    }
+  }, [idleSessions, activeTab, sessions]);
+
+  const handleIdleChange = useCallback((sessionId: string, idle: boolean) => {
+    setIdleSessions((prev) => {
+      const next = new Set(prev);
+      if (idle) {
+        next.add(sessionId);
+      } else {
+        next.delete(sessionId);
+        notifiedSessions.current.delete(sessionId);
+      }
+      return next;
+    });
+  }, []);
 
   const handleCreated = (session: SessionInfo) => {
     load();
@@ -44,6 +90,12 @@ export default function Sessions() {
 
   const closeTab = (id: string) => {
     setOpenTabs((prev) => prev.filter((t) => t !== id));
+    setIdleSessions((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    notifiedSessions.current.delete(id);
     if (activeTab === id) {
       const remaining = openTabs.filter((t) => t !== id);
       setActiveTab(
@@ -87,6 +139,7 @@ export default function Sessions() {
           {openTabs.map((id) => {
             const session = sessions.find((s) => s.id === id);
             const isActive = activeTab === id;
+            const isIdle = idleSessions.has(id);
             return (
               <div
                 key={id}
@@ -98,10 +151,13 @@ export default function Sessions() {
               >
                 <button
                   onClick={() => setActiveTab(id)}
-                  className={`px-3 py-2 text-xs transition-colors ${
+                  className={`flex items-center gap-1.5 px-3 py-2 text-xs transition-colors ${
                     isActive ? "text-white" : "text-zinc-400"
                   }`}
                 >
+                  {isIdle && !isActive && (
+                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                  )}
                   {session
                     ? `${session.repo_name}/${session.branch} (${session.cli_type})`
                     : id}
@@ -137,7 +193,11 @@ export default function Sessions() {
               className="absolute inset-0 p-1"
               style={{ display: activeTab === id ? "block" : "none" }}
             >
-              <Terminal sessionId={id} visible={activeTab === id} />
+              <Terminal
+                sessionId={id}
+                visible={activeTab === id}
+                onIdleChange={(idle) => handleIdleChange(id, idle)}
+              />
             </div>
           ))}
         </div>
