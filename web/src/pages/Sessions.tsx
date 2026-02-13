@@ -40,7 +40,6 @@ export default function Sessions() {
   // OS notifications for idle sessions
   useEffect(() => {
     for (const sessionId of idleSessions) {
-      if (sessionId === activeTab) continue;
       if (notifiedSessions.current.has(sessionId)) continue;
 
       notifiedSessions.current.add(sessionId);
@@ -51,7 +50,7 @@ export default function Sessions() {
 
       if (typeof Notification !== "undefined" && Notification.permission === "granted") {
         const n = new Notification("Superposition", {
-          body: `${label} is waiting for input`,
+          body: `${label} needs your attention`,
         });
         n.onclick = () => {
           window.focus();
