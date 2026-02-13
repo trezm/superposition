@@ -13,10 +13,11 @@ import (
 const replayBufSize = 100 * 1024 // 100KB replay buffer
 
 type Session struct {
-	ID   string
-	Cmd  *exec.Cmd
-	PTY  *os.File
-	Done chan struct{}
+	ID  string
+	Cmd *exec.Cmd
+	PTY *os.File
+
+	done chan struct{}
 
 	mu      sync.Mutex
 	stopped bool
@@ -28,6 +29,16 @@ type Session struct {
 	// Subscribers for fan-out PTY output
 	subMu       sync.Mutex
 	subscribers map[chan []byte]struct{}
+}
+
+// Write sends data to the PTY.
+func (s *Session) Write(data []byte) (int, error) {
+	return s.PTY.Write(data)
+}
+
+// Done returns a channel that is closed when the session process exits.
+func (s *Session) Done() <-chan struct{} {
+	return s.done
 }
 
 func (s *Session) appendReplay(data []byte) {
@@ -85,21 +96,21 @@ func NewManager() *Manager {
 	}
 }
 
-func (m *Manager) Start(id, cliType, workDir string) (*Session, error) {
+func (m *Manager) Start(id, cliType, workDir string) (SessionHandle, int, error) {
 	cmd := exec.Command(cliType)
 	cmd.Dir = workDir
 	cmd.Env = os.Environ()
 
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 40, Cols: 120})
 	if err != nil {
-		return nil, fmt.Errorf("start pty: %w", err)
+		return nil, 0, fmt.Errorf("start pty: %w", err)
 	}
 
 	sess := &Session{
 		ID:          id,
 		Cmd:         cmd,
 		PTY:         ptmx,
-		Done:        make(chan struct{}),
+		done:        make(chan struct{}),
 		subscribers: make(map[chan []byte]struct{}),
 	}
 
@@ -133,17 +144,28 @@ func (m *Manager) Start(id, cliType, workDir string) (*Session, error) {
 		sess.mu.Lock()
 		sess.stopped = true
 		sess.mu.Unlock()
-		close(sess.Done)
+		close(sess.done)
 	}()
 
 	m.mu.Lock()
 	m.sessions[id] = sess
 	m.mu.Unlock()
 
-	return sess, nil
+	pid := cmd.Process.Pid
+	return sess, pid, nil
 }
 
-func (m *Manager) Get(id string) *Session {
+func (m *Manager) Get(id string) SessionHandle {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	sess := m.sessions[id]
+	if sess == nil {
+		return nil
+	}
+	return sess
+}
+
+func (m *Manager) getSession(id string) *Session {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.sessions[id]
@@ -154,7 +176,7 @@ func (m *Manager) Stop(id string) error {
 	sess, ok := m.sessions[id]
 	if !ok {
 		m.mu.Unlock()
-		return fmt.Errorf("session not found: %s", id)
+		return nil
 	}
 	delete(m.sessions, id)
 	m.mu.Unlock()
@@ -174,7 +196,7 @@ func (m *Manager) Stop(id string) error {
 }
 
 func (m *Manager) Resize(id string, rows, cols uint16) error {
-	sess := m.Get(id)
+	sess := m.getSession(id)
 	if sess == nil {
 		return fmt.Errorf("session not found: %s", id)
 	}

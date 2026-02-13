@@ -15,16 +15,16 @@ type Server struct {
 	db        *sql.DB
 	cliStatus []models.CLIStatus
 	gitOk     bool
-	PtyMgr    *ptymgr.Manager
+	PtyMgr    ptymgr.SessionManager
 }
 
-func New(db *sql.DB, cliStatus []models.CLIStatus, gitOk bool, spaHandler http.Handler) *Server {
+func New(db *sql.DB, cliStatus []models.CLIStatus, gitOk bool, spaHandler http.Handler, ptyMgr ptymgr.SessionManager) *Server {
 	s := &Server{
 		mux:       http.NewServeMux(),
 		db:        db,
 		cliStatus: cliStatus,
 		gitOk:     gitOk,
-		PtyMgr:    ptymgr.NewManager(),
+		PtyMgr:    ptyMgr,
 	}
 	s.routes(spaHandler)
 	return s

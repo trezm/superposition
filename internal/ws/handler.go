@@ -23,10 +23,10 @@ type resizeMsg struct {
 }
 
 type Handler struct {
-	manager *ptymgr.Manager
+	manager ptymgr.SessionManager
 }
 
-func NewHandler(manager *ptymgr.Manager) *Handler {
+func NewHandler(manager ptymgr.SessionManager) *Handler {
 	return &Handler{manager: manager}
 }
 
@@ -96,7 +96,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			switch msgType {
 			case websocket.BinaryMessage:
-				sess.PTY.Write(msg)
+				sess.Write(msg)
 			case websocket.TextMessage:
 				var resize resizeMsg
 				if json.Unmarshal(msg, &resize) == nil && resize.Type == "resize" {
@@ -110,7 +110,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	select {
 	case <-done:
 		log.Printf("ws: client disconnected from session %s", sessionID)
-	case <-sess.Done:
+	case <-sess.Done():
 		log.Printf("ws: session %s ended", sessionID)
 		conn.WriteMessage(websocket.CloseMessage,
 			websocket.FormatCloseMessage(websocket.CloseNormalClosure, "session ended"))

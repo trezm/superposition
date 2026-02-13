@@ -18,10 +18,10 @@ import (
 
 type SessionsHandler struct {
 	db      *sql.DB
-	manager *ptymgr.Manager
+	manager ptymgr.SessionManager
 }
 
-func NewSessionsHandler(db *sql.DB, manager *ptymgr.Manager) *SessionsHandler {
+func NewSessionsHandler(db *sql.DB, manager ptymgr.SessionManager) *SessionsHandler {
 	return &SessionsHandler{db: db, manager: manager}
 }
 
@@ -105,14 +105,13 @@ func (h *SessionsHandler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Start PTY
-	sess, err := h.manager.Start(sessionID, body.CLIType, worktreePath)
+	sess, pid, err := h.manager.Start(sessionID, body.CLIType, worktreePath)
 	if err != nil {
 		git.RemoveWorktree(repo.LocalPath, worktreePath)
 		WriteError(w, http.StatusInternalServerError, fmt.Sprintf("start session: %v", err))
 		return
 	}
 
-	pid := sess.Cmd.Process.Pid
 	now := time.Now()
 	h.db.Exec(`INSERT INTO sessions (id, repo_id, worktree_path, branch, cli_type, status, pid, created_at)
 		VALUES (?, ?, ?, ?, ?, 'running', ?, ?)`,
@@ -120,7 +119,7 @@ func (h *SessionsHandler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 
 	// Monitor for process exit and update DB
 	go func() {
-		<-sess.Done
+		<-sess.Done()
 		h.db.Exec(`UPDATE sessions SET status = 'stopped' WHERE id = ?`, sessionID)
 		log.Printf("Session %s stopped", sessionID)
 	}()

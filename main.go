@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"syscall"
 	"time"
@@ -18,7 +19,9 @@ import (
 	"github.com/peterje/superposition/internal/db"
 	gitops "github.com/peterje/superposition/internal/git"
 	"github.com/peterje/superposition/internal/preflight"
+	ptymgr "github.com/peterje/superposition/internal/pty"
 	"github.com/peterje/superposition/internal/server"
+	"github.com/peterje/superposition/internal/shepherd"
 	"github.com/peterje/superposition/web"
 )
 
@@ -26,6 +29,14 @@ import (
 var migrationsFS embed.FS
 
 func main() {
+	// Subcommand dispatch: "superposition shepherd" runs the shepherd process
+	if len(os.Args) > 1 && os.Args[1] == "shepherd" {
+		if err := shepherd.Run(); err != nil {
+			log.Fatalf("Shepherd failed: %v", err)
+		}
+		return
+	}
+
 	port := flag.Int("port", 8800, "server port")
 	flag.Parse()
 
@@ -58,11 +69,21 @@ func main() {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
-	// Startup cleanup: mark stale sessions as stopped
-	cleanupStaleSessions(database)
+	// Connect to or start the shepherd process
+	var mgr ptymgr.SessionManager
+	shepherdClient, err := connectOrStartShepherd()
+	if err != nil {
+		log.Printf("Shepherd unavailable, falling back to in-process PTY manager: %v", err)
+		mgr = ptymgr.NewManager()
+	} else {
+		mgr = shepherdClient
+	}
+
+	// Reconcile DB with shepherd's active sessions
+	reconcileSessions(database, mgr, shepherdClient)
 
 	// Start server
-	srv := server.New(database, cliStatus, gitOk, web.SPAHandler())
+	srv := server.New(database, cliStatus, gitOk, web.SPAHandler(), mgr)
 
 	addr := fmt.Sprintf("0.0.0.0:%d", *port)
 	httpSrv := &http.Server{
@@ -77,11 +98,13 @@ func main() {
 		sig := <-sigCh
 		fmt.Printf("\nReceived %s, shutting down...\n", sig)
 
-		// Stop all PTY sessions
-		srv.PtyMgr.StopAll()
+		// Do NOT stop PTY sessions — shepherd keeps them alive
+		// Do NOT clean up worktrees for running sessions
 
-		// Clean up worktrees for running sessions
-		cleanupWorktrees(database)
+		// Close shepherd client connection
+		if shepherdClient != nil {
+			shepherdClient.Close()
+		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -93,6 +116,128 @@ func main() {
 		log.Fatalf("Server failed: %v", err)
 	}
 	fmt.Println("Server stopped.")
+}
+
+// connectOrStartShepherd connects to an existing shepherd or launches a new one.
+func connectOrStartShepherd() (*shepherd.Client, error) {
+	socketPath, err := shepherd.SocketPath()
+	if err != nil {
+		return nil, err
+	}
+
+	// Try connecting to existing shepherd
+	client, err := shepherd.NewClient(socketPath)
+	if err == nil {
+		if err := client.Ping(); err == nil {
+			log.Println("Connected to existing shepherd")
+			return client, nil
+		}
+		client.Close()
+	}
+
+	// Launch a new shepherd process
+	log.Println("Starting shepherd process...")
+	exe, err := os.Executable()
+	if err != nil {
+		return nil, fmt.Errorf("get executable path: %w", err)
+	}
+
+	cmd := exec.Command(exe, "shepherd")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("start shepherd: %w", err)
+	}
+	// Detach — don't wait for the shepherd to exit
+	cmd.Process.Release()
+
+	// Wait for shepherd to become available
+	for i := 0; i < 40; i++ { // 40 * 50ms = 2s
+		time.Sleep(50 * time.Millisecond)
+		client, err = shepherd.NewClient(socketPath)
+		if err == nil {
+			if err := client.Ping(); err == nil {
+				log.Println("Shepherd started and connected")
+				return client, nil
+			}
+			client.Close()
+		}
+	}
+
+	return nil, fmt.Errorf("shepherd did not become available within 2s")
+}
+
+// reconcileSessions reconciles the database with the shepherd's active sessions.
+// Sessions that are in the DB as "running" but not in the shepherd are marked "stopped".
+// Sessions in the shepherd but not in the DB are left alone (they'll be adopted on reconnect).
+func reconcileSessions(database *sql.DB, mgr ptymgr.SessionManager, client *shepherd.Client) {
+	if client == nil {
+		// No shepherd — mark all running sessions as stopped (old behavior)
+		cleanupStaleSessions(database)
+		return
+	}
+
+	activeIDs, err := client.ListSessions()
+	if err != nil {
+		log.Printf("Failed to list shepherd sessions: %v", err)
+		cleanupStaleSessions(database)
+		return
+	}
+
+	activeSet := make(map[string]struct{}, len(activeIDs))
+	for _, id := range activeIDs {
+		activeSet[id] = struct{}{}
+	}
+
+	// Get all running sessions from DB
+	rows, err := database.Query(`SELECT id FROM sessions WHERE status IN ('running', 'starting')`)
+	if err != nil {
+		log.Printf("Failed to query sessions: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	var orphanIDs []string
+	var aliveIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			continue
+		}
+		if _, alive := activeSet[id]; alive {
+			aliveIDs = append(aliveIDs, id)
+		} else {
+			orphanIDs = append(orphanIDs, id)
+		}
+	}
+
+	// Mark orphaned sessions as stopped
+	for _, id := range orphanIDs {
+		database.Exec(`UPDATE sessions SET status = 'stopped' WHERE id = ?`, id)
+	}
+	if len(orphanIDs) > 0 {
+		log.Printf("Marked %d orphaned sessions as stopped", len(orphanIDs))
+	}
+
+	// Re-adopt alive sessions: register done channels so we get exit notifications
+	for _, id := range aliveIDs {
+		sessionID := id
+		// Register the session in the client's done tracking
+		_ = client.Get(sessionID)
+		// Monitor for exit
+		go func() {
+			<-client.Done(sessionID)
+			database.Exec(`UPDATE sessions SET status = 'stopped' WHERE id = ?`, sessionID)
+			log.Printf("Session %s stopped (detected via shepherd)", sessionID)
+		}()
+	}
+	if len(aliveIDs) > 0 {
+		log.Printf("Re-adopted %d sessions from shepherd", len(aliveIDs))
+	}
+
+	// Clean up worktrees for stopped sessions
+	cleanupWorktrees(database)
 }
 
 func cleanupStaleSessions(database *sql.DB) {
