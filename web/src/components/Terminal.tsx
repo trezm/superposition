@@ -111,7 +111,11 @@ function VirtualKeybar({ onKey }: VirtualKeybarProps) {
   );
 }
 
-export default function Terminal({ sessionId, visible = true, onIdleChange }: TerminalProps) {
+export default function Terminal({
+  sessionId,
+  visible = true,
+  onIdleChange,
+}: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
