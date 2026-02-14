@@ -109,7 +109,9 @@ function NotificationRequest() {
       <div className="flex items-center gap-2 text-emerald-500 text-sm">
         <span>✓ Notifications enabled</span>
         <button
-          onClick={() => new Notification("Superposition", { body: "Test notification" })}
+          onClick={() =>
+            new Notification("Superposition", { body: "Test notification" })
+          }
           className="text-xs text-blue-400 hover:underline ml-2"
         >
           Send test
