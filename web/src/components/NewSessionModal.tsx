@@ -21,7 +21,9 @@ export default function NewSessionModal({ open, onClose, onCreated }: Props) {
   const [sourceBranch, setSourceBranch] = useState("");
   const [newBranch, setNewBranch] = useState("");
   const [branches, setBranches] = useState<string[]>([]);
-  const [cliType, setCliType] = useState<"claude" | "codex" | "gemini">("claude");
+  const [cliType, setCliType] = useState<"claude" | "codex" | "gemini">(
+    "claude",
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -150,7 +152,11 @@ export default function NewSessionModal({ open, onClose, onCreated }: Props) {
                       : "bg-zinc-800 text-zinc-400 hover:text-white"
                   }`}
                 >
-                  {type === "claude" ? "Claude Code" : type === "codex" ? "Codex" : "Gemini CLI"}
+                  {type === "claude"
+                    ? "Claude Code"
+                    : type === "codex"
+                      ? "Codex"
+                      : "Gemini CLI"}
                 </button>
               ))}
             </div>
