@@ -19,6 +19,7 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/settings" element={<Settings />} />
             <Route path="/repos" element={<Repositories />} />
             <Route path="/sessions" element={<Sessions />} />
+            <Route path="/sessions/:sessionId" element={<Sessions />} />
           </Route>
         </Routes>
       </BrowserRouter>

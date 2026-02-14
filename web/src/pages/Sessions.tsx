@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import Terminal from "../components/Terminal";
 import NewSessionModal from "../components/NewSessionModal";
@@ -15,12 +16,19 @@ interface SessionInfo {
 }
 
 export default function Sessions() {
+  const navigate = useNavigate();
+  const { sessionId } = useParams<{ sessionId?: string }>();
+  const activeTab = sessionId ?? null;
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [openTabs, setOpenTabs] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [idleSessions, setIdleSessions] = useState<Set<string>>(new Set());
   const notifiedSessions = useRef<Set<string>>(new Set());
+
+  const openTab = useCallback((id: string) => {
+    setOpenTabs((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    navigate(`/sessions/${id}`);
+  }, [navigate]);
 
   const load = useCallback(() => {
     api.getSessions().then(setSessions).catch(console.error);
@@ -37,6 +45,14 @@ export default function Sessions() {
     document.title =
       idleSessions.size > 0 ? "(!) Superposition" : "Superposition";
   }, [idleSessions]);
+
+  useEffect(() => {
+    if (!activeTab) {
+      setOpenTabs((prev) => (prev.length === 0 ? prev : []));
+      return;
+    }
+    setOpenTabs((prev) => (prev.includes(activeTab) ? prev : [...prev, activeTab]));
+  }, [activeTab]);
 
   // OS notifications for idle sessions
   useEffect(() => {
@@ -58,7 +74,7 @@ export default function Sessions() {
         });
         n.onclick = () => {
           window.focus();
-          setActiveTab(sessionId);
+          openTab(sessionId);
         };
       } else if (
         typeof Notification !== "undefined" &&
@@ -67,7 +83,7 @@ export default function Sessions() {
         Notification.requestPermission();
       }
     }
-  }, [idleSessions, activeTab, sessions]);
+  }, [idleSessions, activeTab, sessions, openTab]);
 
   const handleIdleChange = useCallback((sessionId: string, idle: boolean) => {
     setIdleSessions((prev) => {
@@ -87,15 +103,9 @@ export default function Sessions() {
     openTab(session.id);
   };
 
-  const openTab = (id: string) => {
-    if (!openTabs.includes(id)) {
-      setOpenTabs((prev) => [...prev, id]);
-    }
-    setActiveTab(id);
-  };
-
   const closeTab = (id: string) => {
-    setOpenTabs((prev) => prev.filter((t) => t !== id));
+    const remaining = openTabs.filter((t) => t !== id);
+    setOpenTabs(remaining);
     setIdleSessions((prev) => {
       const next = new Set(prev);
       next.delete(id);
@@ -103,9 +113,10 @@ export default function Sessions() {
     });
     notifiedSessions.current.delete(id);
     if (activeTab === id) {
-      const remaining = openTabs.filter((t) => t !== id);
-      setActiveTab(
-        remaining.length > 0 ? remaining[remaining.length - 1] : null,
+      navigate(
+        remaining.length > 0
+          ? `/sessions/${remaining[remaining.length - 1]}`
+          : "/sessions",
       );
     }
   };
@@ -128,15 +139,15 @@ export default function Sessions() {
   const stoppedSessions = sessions.filter((s) => s.status !== "running");
 
   // Tab workspace view
-  if (openTabs.length > 0) {
+  if (activeTab) {
     return (
       <div className="flex flex-col h-full min-h-0">
         {/* Tab bar */}
         <div className="sticky top-0 z-20 flex items-center gap-1 border-b border-zinc-800 bg-zinc-900/90 px-1.5 py-1 overflow-x-auto backdrop-blur">
           <button
             onClick={() => {
-              setActiveTab(null);
               setOpenTabs([]);
+              navigate("/sessions");
             }}
             className="shrink-0 rounded text-sm text-zinc-400 hover:text-white hover:bg-zinc-800/60 px-3 py-2 transition-colors"
           >
@@ -156,7 +167,7 @@ export default function Sessions() {
                 }`}
               >
                 <button
-                  onClick={() => setActiveTab(id)}
+                  onClick={() => navigate(`/sessions/${id}`)}
                   className={`flex items-center gap-1.5 min-w-0 px-3 py-2.5 text-sm md:text-xs transition-colors ${
                     isActive ? "text-white" : "text-zinc-400"
                   }`}
