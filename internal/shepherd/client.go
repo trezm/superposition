@@ -22,9 +22,10 @@ type Client struct {
 	pending   map[string]chan Response
 
 	// Per-session subscriber channels and done channels
-	sessionMu   sync.Mutex
-	sessionSubs map[string][]chan []byte // PTY output subscribers per session
-	sessionDone map[string]chan struct{} // done channels per session
+	sessionMu      sync.Mutex
+	sessionSubs    map[string][]chan []byte // PTY output subscribers per session
+	sessionDone    map[string]chan struct{} // done channels per session
+	shepherdSubbed map[string]bool         // true if cmdSubscribe already sent for this session
 
 	reqCounter atomic.Uint64
 	closed     chan struct{}
@@ -38,11 +39,12 @@ func NewClient(socketPath string) (*Client, error) {
 	}
 
 	c := &Client{
-		conn:        conn,
-		pending:     make(map[string]chan Response),
-		sessionSubs: make(map[string][]chan []byte),
-		sessionDone: make(map[string]chan struct{}),
-		closed:      make(chan struct{}),
+		conn:           conn,
+		pending:        make(map[string]chan Response),
+		sessionSubs:    make(map[string][]chan []byte),
+		sessionDone:    make(map[string]chan struct{}),
+		shepherdSubbed: make(map[string]bool),
+		closed:         make(chan struct{}),
 	}
 
 	go c.readLoop()
@@ -138,6 +140,7 @@ func (c *Client) Stop(id string) error {
 		delete(c.sessionDone, id)
 	}
 	delete(c.sessionSubs, id)
+	delete(c.shepherdSubbed, id)
 	c.sessionMu.Unlock()
 
 	return nil
@@ -298,10 +301,18 @@ func (c *Client) subscribe(sessionID string) (<-chan []byte, func()) {
 
 	c.sessionMu.Lock()
 	c.sessionSubs[sessionID] = append(c.sessionSubs[sessionID], ch)
+	needSubscribe := !c.shepherdSubbed[sessionID]
+	if needSubscribe {
+		c.shepherdSubbed[sessionID] = true
+	}
 	c.sessionMu.Unlock()
 
-	// Also tell the shepherd we want to subscribe (for targeted delivery)
-	c.sendRequest(Request{Command: cmdSubscribe, SessionID: sessionID})
+	// Only tell the shepherd on the first local subscriber — the shepherd-side
+	// goroutine persists for the lifetime of this client connection, so
+	// subsequent subscribes would create duplicate forwarding goroutines.
+	if needSubscribe {
+		c.sendRequest(Request{Command: cmdSubscribe, SessionID: sessionID})
+	}
 
 	unsub := func() {
 		c.sessionMu.Lock()
