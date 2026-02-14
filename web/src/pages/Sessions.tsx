@@ -25,10 +25,13 @@ export default function Sessions() {
   const [idleSessions, setIdleSessions] = useState<Set<string>>(new Set());
   const notifiedSessions = useRef<Set<string>>(new Set());
 
-  const openTab = useCallback((id: string) => {
-    setOpenTabs((prev) => (prev.includes(id) ? prev : [...prev, id]));
-    navigate(`/sessions/${id}`);
-  }, [navigate]);
+  const openTab = useCallback(
+    (id: string) => {
+      setOpenTabs((prev) => (prev.includes(id) ? prev : [...prev, id]));
+      navigate(`/sessions/${id}`);
+    },
+    [navigate],
+  );
 
   const load = useCallback(() => {
     api.getSessions().then(setSessions).catch(console.error);
@@ -51,7 +54,9 @@ export default function Sessions() {
       setOpenTabs((prev) => (prev.length === 0 ? prev : []));
       return;
     }
-    setOpenTabs((prev) => (prev.includes(activeTab) ? prev : [...prev, activeTab]));
+    setOpenTabs((prev) =>
+      prev.includes(activeTab) ? prev : [...prev, activeTab],
+    );
   }, [activeTab]);
 
   // OS notifications for idle sessions
