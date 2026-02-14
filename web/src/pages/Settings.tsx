@@ -69,6 +69,69 @@ export default function Settings() {
           Save
         </button>
       </div>
+
+      <div className="h-px bg-zinc-800 my-8" />
+
+      <div className="space-y-6">
+        <div>
+          <h3 className="text-lg font-medium mb-2">System Notifications</h3>
+          <p className="text-sm text-zinc-400 mb-4">
+            Receive desktop notifications when a long-running command finishes.
+          </p>
+          <NotificationRequest />
+        </div>
+      </div>
     </div>
+  );
+}
+
+function NotificationRequest() {
+  const [permission, setPermission] = useState(
+    typeof Notification !== "undefined" ? Notification.permission : "denied",
+  );
+
+  const request = async () => {
+    if (typeof Notification === "undefined") return;
+    const result = await Notification.requestPermission();
+    setPermission(result);
+  };
+
+  if (typeof Notification === "undefined") {
+    return (
+      <p className="text-sm text-yellow-500">
+        Notifications are not supported in this browser.
+      </p>
+    );
+  }
+
+  if (permission === "granted") {
+    return (
+      <div className="flex items-center gap-2 text-emerald-500 text-sm">
+        <span>✓ Notifications enabled</span>
+        <button
+          onClick={() => new Notification("Superposition", { body: "Test notification" })}
+          className="text-xs text-blue-400 hover:underline ml-2"
+        >
+          Send test
+        </button>
+      </div>
+    );
+  }
+
+  if (permission === "denied") {
+    return (
+      <p className="text-sm text-red-400">
+        Notifications are blocked. Please enable them in your browser settings.
+      </p>
+    );
+  }
+
+  return (
+    <button
+      onClick={request}
+      className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-medium rounded-md transition-colors border border-zinc-700"
+    >
+      Enable Notifications
+    </button>
   );
 }
