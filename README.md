@@ -1,5 +1,8 @@
 # Superposition
 
+[![Go Quality](https://github.com/trezm/superposition/actions/workflows/go-quality.yml/badge.svg)](https://github.com/trezm/superposition/actions/workflows/go-quality.yml)
+[![Web Quality](https://github.com/trezm/superposition/actions/workflows/web-quality.yml/badge.svg)](https://github.com/trezm/superposition/actions/workflows/web-quality.yml)
+
 A web-based application for running AI coding sessions (Claude Code and Codex) against your GitHub repositories. Each session runs in an isolated git worktree with a full browser-based terminal.
 
 ![Dashboard](docs/screenshots/dashboard.png)
@@ -8,7 +11,8 @@ A web-based application for running AI coding sessions (Claude Code and Codex) a
 
 - **Multi-CLI Support** — Run sessions with Claude Code or Codex
 - **Branch Isolation** — Each session gets its own git worktree, so parallel sessions never conflict
-- **Browser Terminal** — Full xterm.js terminal with reconnection support and replay buffer
+- **Browser Terminal** — Full xterm.js terminal with automatic reconnection and 100 KB replay buffer, plus virtual keyboard for mobile/touch devices
+- **Session Persistence** — A background shepherd process keeps PTY sessions alive across server restarts, so deploys never kill a running session
 - **Repository Management** — Clone and sync GitHub repos via Personal Access Token
 - **Single Binary** — Compiles to a standalone Go binary with the React frontend embedded
 
@@ -67,6 +71,8 @@ make build
 
 Open [http://127.0.0.1:8800](http://127.0.0.1:8800) in your browser.
 
+> **Note:** The server binds to `0.0.0.0`, so it's accessible from other machines on your network. If you're running on a public server, put it behind a reverse proxy with authentication or limit access via firewall rules.
+
 ### First-time setup
 
 1. Go to **Settings** and enter your [GitHub Personal Access Token](https://github.com/settings/tokens) (classic token with `repo` scope)
@@ -113,6 +119,7 @@ This produces a single `./superposition` binary with the React SPA embedded. No 
 │   ├── pty/                 # PTY process management
 │   ├── preflight/           # CLI dependency checks
 │   ├── server/              # HTTP server + middleware
+│   ├── shepherd/            # Long-lived PTY process manager (survives restarts)
 │   └── ws/                  # WebSocket terminal streaming
 └── web/                     # React frontend
     └── src/
@@ -124,8 +131,26 @@ This produces a single `./superposition` binary with the React SPA embedded. No 
 
 **Frontend:** React 19, React Router 7, xterm.js, Tailwind CSS, Vite
 
-**Data:** Stored in `~/.superposition/` — SQLite database, bare repo clones, and session worktrees
+**Data:** Stored in `~/.superposition/`:
+
+```
+~/.superposition/
+├── superposition.db         # SQLite database (settings, repos, sessions)
+├── repos/                   # Bare git clones (owner/name.git)
+├── worktrees/               # Active session worktrees (one per session)
+├── shepherd.sock            # Unix socket for shepherd IPC
+└── shepherd.pid             # Shepherd process ID
+```
+
+## Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| **Port already in use** | Another instance may be running. Kill it or use `-port <other>`. |
+| **Stale shepherd socket** | If sessions won't start after a crash, remove `~/.superposition/shepherd.sock` and restart. |
+| **Repos not loading** | Verify your GitHub PAT has `repo` scope and hasn't expired. |
+| **Terminal blank on reconnect** | Refresh the page — the replay buffer will restore output. |
 
 ## License
 
-MIT
+[MIT](LICENSE)
