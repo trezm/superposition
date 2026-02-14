@@ -51,7 +51,9 @@ export default function Layout() {
         <div className="p-4 border-b border-zinc-800">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h1 className="text-lg font-bold tracking-tight">Superposition</h1>
+              <h1 className="text-lg font-bold tracking-tight">
+                Superposition
+              </h1>
               <p className="text-xs text-zinc-500">AI Coding Sessions</p>
             </div>
             <button
@@ -67,7 +69,11 @@ export default function Layout() {
                 stroke="currentColor"
                 strokeWidth={2}
               >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
           </div>
@@ -121,12 +127,20 @@ export default function Layout() {
               stroke="currentColor"
               strokeWidth={2}
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M4 6h16M4 12h16M4 18h16"
+              />
             </svg>
           </button>
           <div>
-            <h1 className="text-sm font-semibold tracking-wide">Superposition</h1>
-            <p className="text-[11px] leading-tight text-zinc-500">AI Coding Sessions</p>
+            <h1 className="text-sm font-semibold tracking-wide">
+              Superposition
+            </h1>
+            <p className="text-[11px] leading-tight text-zinc-500">
+              AI Coding Sessions
+            </p>
           </div>
         </header>
 

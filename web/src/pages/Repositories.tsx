@@ -195,7 +195,9 @@ export default function Repositories() {
               className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg border border-zinc-800 bg-zinc-900/50"
             >
               <div>
-                <p className="text-sm font-medium break-all">{repo.full_name}</p>
+                <p className="text-sm font-medium break-all">
+                  {repo.full_name}
+                </p>
                 {repo.description && (
                   <p className="text-xs text-zinc-500 sm:truncate sm:max-w-md">
                     {repo.description}

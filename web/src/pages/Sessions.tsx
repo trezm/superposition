@@ -34,7 +34,8 @@ export default function Sessions() {
 
   // Browser tab title when sessions are idle
   useEffect(() => {
-    document.title = idleSessions.size > 0 ? "(!) Superposition" : "Superposition";
+    document.title =
+      idleSessions.size > 0 ? "(!) Superposition" : "Superposition";
   }, [idleSessions]);
 
   // OS notifications for idle sessions
@@ -49,7 +50,10 @@ export default function Sessions() {
         ? `${session.repo_name}/${session.branch}`
         : sessionId;
 
-      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+      if (
+        typeof Notification !== "undefined" &&
+        Notification.permission === "granted"
+      ) {
         const n = new Notification("Superposition", {
           body: `${label} is waiting for input`,
         });
@@ -57,7 +61,10 @@ export default function Sessions() {
           window.focus();
           setActiveTab(sessionId);
         };
-      } else if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      } else if (
+        typeof Notification !== "undefined" &&
+        Notification.permission === "default"
+      ) {
         Notification.requestPermission();
       }
     }
@@ -213,7 +220,9 @@ export default function Sessions() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6 sm:mb-8">
         <div>
           <h2 className="text-xl sm:text-2xl font-bold mb-1">Sessions</h2>
-          <p className="text-sm sm:text-base text-zinc-400">Active and past coding sessions.</p>
+          <p className="text-sm sm:text-base text-zinc-400">
+            Active and past coding sessions.
+          </p>
         </div>
         <button
           onClick={() => setShowModal(true)}
