@@ -25,7 +25,7 @@ type Client struct {
 	sessionMu      sync.Mutex
 	sessionSubs    map[string][]chan []byte // PTY output subscribers per session
 	sessionDone    map[string]chan struct{} // done channels per session
-	shepherdSubbed map[string]bool         // true if cmdSubscribe already sent for this session
+	shepherdSubbed map[string]bool          // true if cmdSubscribe already sent for this session
 
 	reqCounter atomic.Uint64
 	closed     chan struct{}
