@@ -21,6 +21,7 @@ const KEY_SEQUENCES: Record<string, string> = {
   right: "\x1b[C",
   enter: "\r",
   tab: "\t",
+  "shift-tab": "\x1b[Z",
   escape: "\x1b",
   "ctrl-c": "\x03",
   backspace: "\x7f",
@@ -74,6 +75,7 @@ function VirtualKeybar({ onKey }: VirtualKeybarProps) {
           {/* Common keys */}
           {btn("Enter", "enter", "h-10 px-3")}
           {btn("Tab", "tab", "h-10 px-3")}
+          {btn("⇧Tab", "shift-tab", "h-10 px-3")}
 
           <div className="flex-1" />
 
