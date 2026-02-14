@@ -9,6 +9,8 @@ interface LocalRepo {
   clone_status: string;
   default_branch: string;
   last_synced: string | null;
+  repo_type: string;
+  source_path: string | null;
 }
 
 interface GitHubRepo {
@@ -30,6 +32,8 @@ export default function Repositories() {
   const [search, setSearch] = useState("");
   const [hasLoaded, setHasLoaded] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [localPath, setLocalPath] = useState("");
+  const [localError, setLocalError] = useState("");
 
   const loadLocal = useCallback(() => {
     api.getRepos().then(setLocalRepos).catch(console.error);
@@ -79,6 +83,19 @@ export default function Repositories() {
     }
   };
 
+  const addLocalFolder = async () => {
+    const trimmed = localPath.trim();
+    if (!trimmed) return;
+    setLocalError("");
+    try {
+      await api.addLocalRepo(trimmed);
+      setLocalPath("");
+      loadLocal();
+    } catch (e: any) {
+      setLocalError(e.message);
+    }
+  };
+
   const removeRepo = async (id: number) => {
     await api.deleteRepo(id);
     loadLocal();
@@ -96,7 +113,7 @@ export default function Repositories() {
     <div className="w-full max-w-4xl p-4 sm:p-6 lg:p-8">
       <h2 className="text-xl sm:text-2xl font-bold mb-1">Repositories</h2>
       <p className="text-sm sm:text-base text-zinc-400 mb-6 sm:mb-8">
-        Add GitHub repos to start coding sessions.
+        Add GitHub repos or local folders to start coding sessions.
       </p>
 
       {error && (
@@ -123,8 +140,16 @@ export default function Repositories() {
               >
                 <div>
                   <p className="font-medium break-all">
-                    {repo.owner}/{repo.name}
+                    {repo.repo_type === "local" ? repo.name : `${repo.owner}/${repo.name}`}
+                    {repo.repo_type === "local" && (
+                      <span className="ml-2 text-xs text-zinc-500 border border-zinc-700 px-1.5 py-0.5 rounded">
+                        local
+                      </span>
+                    )}
                   </p>
+                  {repo.repo_type === "local" && repo.source_path && (
+                    <p className="text-xs text-zinc-600 break-all">{repo.source_path}</p>
+                  )}
                   <p className="text-xs text-zinc-500">
                     {repo.clone_status === "ready"
                       ? `Ready — ${repo.default_branch}`
@@ -156,6 +181,35 @@ export default function Repositories() {
             ))}
           </div>
         )}
+      </div>
+
+      {/* Add local folder */}
+      <div className="mb-6 sm:mb-8">
+        <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider mb-3">
+          Add Local Folder
+        </h3>
+        {localError && (
+          <div className="mb-3 p-3 bg-red-900/30 border border-red-800 rounded-md text-sm text-red-300">
+            {localError}
+          </div>
+        )}
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            type="text"
+            value={localPath}
+            onChange={(e) => setLocalPath(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addLocalFolder()}
+            placeholder="/path/to/git/repo"
+            className="flex-1 px-3 py-2.5 bg-zinc-900 border border-zinc-700 rounded-md text-sm placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          <button
+            onClick={addLocalFolder}
+            disabled={!localPath.trim()}
+            className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Add
+          </button>
+        </div>
       </div>
 
       {/* GitHub repos */}

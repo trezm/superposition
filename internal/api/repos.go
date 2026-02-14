@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -65,7 +66,7 @@ func (h *ReposHandler) HandleGitHubRepos(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *ReposHandler) HandleList(w http.ResponseWriter, _ *http.Request) {
-	rows, err := h.db.Query(`SELECT id, github_url, owner, name, local_path, clone_status, default_branch, last_synced, created_at FROM repositories ORDER BY created_at DESC`)
+	rows, err := h.db.Query(`SELECT id, github_url, owner, name, local_path, clone_status, default_branch, last_synced, created_at, source_path, repo_type FROM repositories ORDER BY created_at DESC`)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -75,10 +76,12 @@ func (h *ReposHandler) HandleList(w http.ResponseWriter, _ *http.Request) {
 	repos := []models.Repository{}
 	for rows.Next() {
 		var repo models.Repository
-		if err := rows.Scan(&repo.ID, &repo.GitHubURL, &repo.Owner, &repo.Name, &repo.LocalPath, &repo.CloneStatus, &repo.DefaultBranch, &repo.LastSynced, &repo.CreatedAt); err != nil {
+		var githubURL sql.NullString
+		if err := rows.Scan(&repo.ID, &githubURL, &repo.Owner, &repo.Name, &repo.LocalPath, &repo.CloneStatus, &repo.DefaultBranch, &repo.LastSynced, &repo.CreatedAt, &repo.SourcePath, &repo.RepoType); err != nil {
 			WriteError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		repo.GitHubURL = githubURL.String
 		repos = append(repos, repo)
 	}
 	WriteJSON(w, http.StatusOK, repos)
@@ -87,14 +90,24 @@ func (h *ReposHandler) HandleList(w http.ResponseWriter, _ *http.Request) {
 func (h *ReposHandler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		GitHubURL string `json:"github_url"`
+		LocalPath string `json:"local_path"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		WriteError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
 
-	// Parse owner/name from URL
-	owner, name, err := parseGitHubURL(body.GitHubURL)
+	if body.LocalPath != "" {
+		h.createLocalRepo(w, body.LocalPath)
+	} else if body.GitHubURL != "" {
+		h.createGitHubRepo(w, body.GitHubURL)
+	} else {
+		WriteError(w, http.StatusBadRequest, "github_url or local_path is required")
+	}
+}
+
+func (h *ReposHandler) createGitHubRepo(w http.ResponseWriter, githubURL string) {
+	owner, name, err := parseGitHubURL(githubURL)
 	if err != nil {
 		WriteError(w, http.StatusBadRequest, err.Error())
 		return
@@ -103,8 +116,8 @@ func (h *ReposHandler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 	cloneURL := fmt.Sprintf("https://github.com/%s/%s.git", owner, name)
 
 	result, err := h.db.Exec(
-		`INSERT INTO repositories (github_url, owner, name, local_path, clone_status, default_branch) VALUES (?, ?, ?, '', 'cloning', 'main')`,
-		body.GitHubURL, owner, name,
+		`INSERT INTO repositories (github_url, owner, name, local_path, clone_status, default_branch, repo_type) VALUES (?, ?, ?, '', 'cloning', 'main', 'github')`,
+		githubURL, owner, name,
 	)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
@@ -116,16 +129,49 @@ func (h *ReposHandler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id, _ := result.LastInsertId()
-
-	// Clone in background
 	go h.cloneRepo(id, cloneURL, owner, name)
 
 	repo := models.Repository{
 		ID:          id,
-		GitHubURL:   body.GitHubURL,
+		GitHubURL:   githubURL,
 		Owner:       owner,
 		Name:        name,
 		CloneStatus: "cloning",
+		RepoType:    "github",
+	}
+	WriteJSON(w, http.StatusCreated, repo)
+}
+
+func (h *ReposHandler) createLocalRepo(w http.ResponseWriter, sourcePath string) {
+	name := filepath.Base(sourcePath)
+	if name == "" || name == "." || name == "/" {
+		WriteError(w, http.StatusBadRequest, "invalid local path")
+		return
+	}
+
+	result, err := h.db.Exec(
+		`INSERT INTO repositories (owner, name, local_path, clone_status, default_branch, source_path, repo_type) VALUES ('local', ?, '', 'cloning', 'main', ?, 'local')`,
+		name, sourcePath,
+	)
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE") {
+			WriteError(w, http.StatusConflict, "repository already added")
+			return
+		}
+		WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	id, _ := result.LastInsertId()
+	go h.cloneLocalRepo(id, sourcePath, name)
+
+	repo := models.Repository{
+		ID:          id,
+		Owner:       "local",
+		Name:        name,
+		CloneStatus: "cloning",
+		SourcePath:  &sourcePath,
+		RepoType:    "local",
 	}
 	WriteJSON(w, http.StatusCreated, repo)
 }
@@ -166,8 +212,8 @@ func (h *ReposHandler) HandleSync(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var repo models.Repository
-	err = h.db.QueryRow(`SELECT id, local_path, clone_status FROM repositories WHERE id = ?`, id).
-		Scan(&repo.ID, &repo.LocalPath, &repo.CloneStatus)
+	err = h.db.QueryRow(`SELECT id, local_path, clone_status, repo_type FROM repositories WHERE id = ?`, id).
+		Scan(&repo.ID, &repo.LocalPath, &repo.CloneStatus, &repo.RepoType)
 	if err == sql.ErrNoRows {
 		WriteError(w, http.StatusNotFound, "repository not found")
 		return
@@ -177,7 +223,10 @@ func (h *ReposHandler) HandleSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pat := h.getPAT()
+	pat := ""
+	if repo.RepoType != "local" {
+		pat = h.getPAT()
+	}
 	if err := git.Fetch(repo.LocalPath, pat); err != nil {
 		WriteError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -235,6 +284,26 @@ func (h *ReposHandler) cloneRepo(id int64, cloneURL, owner, name string) {
 	h.db.Exec(`UPDATE repositories SET local_path = ?, clone_status = 'ready', default_branch = ?, last_synced = ? WHERE id = ?`,
 		localPath, defaultBranch, now, id)
 	log.Printf("Cloned %s/%s to %s", owner, name, localPath)
+}
+
+func (h *ReposHandler) cloneLocalRepo(id int64, sourcePath, name string) {
+	localPath, err := git.CloneBareLocal(sourcePath, name)
+	if err != nil {
+		log.Printf("Clone failed for local repo %s: %v", sourcePath, err)
+		h.db.Exec(`UPDATE repositories SET clone_status = 'error' WHERE id = ?`, id)
+		return
+	}
+
+	defaultBranch := "main"
+	branches, err := git.ListBranches(localPath)
+	if err == nil && len(branches) > 0 {
+		defaultBranch = branches[0]
+	}
+
+	now := time.Now()
+	h.db.Exec(`UPDATE repositories SET local_path = ?, clone_status = 'ready', default_branch = ?, last_synced = ? WHERE id = ?`,
+		localPath, defaultBranch, now, id)
+	log.Printf("Cloned local repo %s to %s", sourcePath, localPath)
 }
 
 func (h *ReposHandler) getPAT() string {

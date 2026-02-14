@@ -75,6 +75,13 @@ func main() {
 	if err := db.Migrate(database, string(migration002)); err != nil {
 		log.Fatalf("Failed to run migration 002: %v", err)
 	}
+	migration003, err := migrationsFS.ReadFile("migrations/003_add_local_repos.sql")
+	if err != nil {
+		log.Fatalf("Failed to read migration 003: %v", err)
+	}
+	if err := db.Migrate(database, string(migration003)); err != nil {
+		log.Fatalf("Failed to run migration 003: %v", err)
+	}
 
 	// Connect to or start the shepherd process
 	var mgr ptymgr.SessionManager

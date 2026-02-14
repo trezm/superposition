@@ -18,6 +18,8 @@ type Repository struct {
 	DefaultBranch string     `json:"default_branch"`
 	LastSynced    *time.Time `json:"last_synced"`
 	CreatedAt     time.Time  `json:"created_at"`
+	SourcePath    *string    `json:"source_path"`
+	RepoType      string     `json:"repo_type"`
 }
 
 type Session struct {

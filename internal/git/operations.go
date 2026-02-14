@@ -63,6 +63,51 @@ func CloneBare(cloneURL, pat, owner, name string) (string, error) {
 	return localPath, nil
 }
 
+// CloneBareLocal clones a local git repo as a bare repository.
+// No PAT needed — uses direct filesystem path as origin.
+func CloneBareLocal(sourcePath, name string) (string, error) {
+	// Validate that sourcePath is a git repo
+	cmd := exec.Command("git", "-C", sourcePath, "rev-parse", "--git-dir")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("not a git repository: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+
+	reposDir, err := ReposDir()
+	if err != nil {
+		return "", err
+	}
+
+	destDir := filepath.Join(reposDir, "local")
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return "", fmt.Errorf("create repos dir: %w", err)
+	}
+
+	localPath := filepath.Join(destDir, name+".git")
+
+	// If already exists, verify origin matches and fetch
+	if _, err := os.Stat(localPath); err == nil {
+		originCmd := exec.Command("git", "-C", localPath, "remote", "get-url", "origin")
+		out, err := originCmd.Output()
+		if err == nil {
+			existingOrigin := strings.TrimSpace(string(out))
+			if existingOrigin != sourcePath {
+				return "", fmt.Errorf("bare repo already exists with different origin: %s", existingOrigin)
+			}
+		}
+		return localPath, Fetch(localPath, "")
+	}
+
+	cloneCmd := exec.Command("git", "clone", "--bare", sourcePath, localPath)
+	if out, err := cloneCmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("git clone: %s: %w", string(out), err)
+	}
+
+	// Configure fetch refspec for bare clone
+	exec.Command("git", "-C", localPath, "config", "remote.origin.fetch", "+refs/heads/*:refs/heads/*").Run()
+
+	return localPath, nil
+}
+
 func Fetch(barePath, pat string) error {
 	// Ensure fetch refspec is configured (bare clones don't set this by default)
 	exec.Command("git", "-C", barePath, "config", "remote.origin.fetch", "+refs/heads/*:refs/heads/*").Run()

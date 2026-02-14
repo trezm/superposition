@@ -42,6 +42,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ github_url: githubUrl }),
     }),
+  addLocalRepo: (path: string) =>
+    request<any>("/api/repos", {
+      method: "POST",
+      body: JSON.stringify({ local_path: path }),
+    }),
   deleteRepo: (id: number) =>
     request<void>(`/api/repos/${id}`, { method: "DELETE" }),
   syncRepo: (id: number) =>
