@@ -81,11 +81,6 @@ export default function Sessions() {
           window.focus();
           openTab(sessionId);
         };
-      } else if (
-        typeof Notification !== "undefined" &&
-        Notification.permission === "default"
-      ) {
-        Notification.requestPermission();
       }
     }
   }, [idleSessions, activeTab, sessions, openTab]);
