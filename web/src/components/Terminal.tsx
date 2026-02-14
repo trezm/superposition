@@ -47,11 +47,8 @@ function VirtualKeybar({ onKey }: VirtualKeybarProps) {
 
   const btn = (label: string, key: string, className?: string) => (
     <button
-      onTouchStart={(e) => {
-        e.preventDefault();
-        onKey(KEY_SEQUENCES[key]);
-      }}
-      onMouseDown={(e) => {
+      type="button"
+      onPointerDown={(e) => {
         e.preventDefault();
         onKey(KEY_SEQUENCES[key]);
       }}
@@ -82,13 +79,10 @@ function VirtualKeybar({ onKey }: VirtualKeybarProps) {
 
           {/* Toggle extra keys */}
           <button
-            onTouchStart={(e) => {
+            type="button"
+            onPointerDown={(e) => {
               e.preventDefault();
-              setShowExtra(!showExtra);
-            }}
-            onMouseDown={(e) => {
-              e.preventDefault();
-              setShowExtra(!showExtra);
+              setShowExtra((current) => !current);
             }}
             className={`flex items-center justify-center rounded-md border text-sm font-medium
               select-none touch-manipulation h-10 px-2 ${
