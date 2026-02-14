@@ -130,15 +130,15 @@ export default function Sessions() {
   // Tab workspace view
   if (openTabs.length > 0) {
     return (
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col h-full min-h-0">
         {/* Tab bar */}
-        <div className="flex items-center border-b border-zinc-800 bg-zinc-900/50 px-1 overflow-x-auto">
+        <div className="sticky top-0 z-20 flex items-center gap-1 border-b border-zinc-800 bg-zinc-900/90 px-1.5 py-1 overflow-x-auto backdrop-blur">
           <button
             onClick={() => {
               setActiveTab(null);
               setOpenTabs([]);
             }}
-            className="shrink-0 text-sm text-zinc-400 hover:text-white px-3 py-2 transition-colors"
+            className="shrink-0 rounded text-sm text-zinc-400 hover:text-white hover:bg-zinc-800/60 px-3 py-2 transition-colors"
           >
             &larr;
           </button>
@@ -149,7 +149,7 @@ export default function Sessions() {
             return (
               <div
                 key={id}
-                className={`flex items-center gap-1 shrink-0 border-r border-zinc-800 ${
+                className={`flex items-center gap-1 shrink-0 max-w-[18rem] md:max-w-none border-r border-zinc-800 ${
                   isActive
                     ? "bg-zinc-950"
                     : "bg-zinc-900/50 hover:bg-zinc-800/50"
@@ -157,23 +157,25 @@ export default function Sessions() {
               >
                 <button
                   onClick={() => setActiveTab(id)}
-                  className={`flex items-center gap-1.5 px-3 py-2 text-xs transition-colors ${
+                  className={`flex items-center gap-1.5 min-w-0 px-3 py-2.5 text-sm md:text-xs transition-colors ${
                     isActive ? "text-white" : "text-zinc-400"
                   }`}
                 >
                   {isIdle && !isActive && (
                     <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
                   )}
-                  {session
-                    ? `${session.repo_name}/${session.branch} (${session.cli_type})`
-                    : id}
+                  <span className="truncate">
+                    {session
+                      ? `${session.repo_name}/${session.branch} (${session.cli_type})`
+                      : id}
+                  </span>
                 </button>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     closeTab(id);
                   }}
-                  className="text-zinc-600 hover:text-zinc-300 pr-2 text-xs"
+                  className="shrink-0 text-zinc-600 hover:text-zinc-300 px-2 py-2 text-base md:text-sm"
                 >
                   &times;
                 </button>
@@ -184,7 +186,7 @@ export default function Sessions() {
           {activeTab && (
             <button
               onClick={() => handleDelete(activeTab)}
-              className="shrink-0 text-xs text-red-400 hover:text-red-300 px-2 py-1 mr-2"
+              className="shrink-0 text-xs text-red-400 hover:text-red-300 px-3 py-1.5 mr-1 rounded border border-zinc-700 hover:border-red-800 transition-colors"
             >
               Stop
             </button>
@@ -213,22 +215,24 @@ export default function Sessions() {
 
   // Session list view
   return (
-    <div className="p-8 max-w-4xl">
-      <div className="flex items-center justify-between mb-8">
+    <div className="w-full max-w-4xl p-4 sm:p-6 lg:p-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6 sm:mb-8">
         <div>
-          <h2 className="text-2xl font-bold mb-1">Sessions</h2>
-          <p className="text-zinc-400">Active and past coding sessions.</p>
+          <h2 className="text-xl sm:text-2xl font-bold mb-1">Sessions</h2>
+          <p className="text-sm sm:text-base text-zinc-400">
+            Active and past coding sessions.
+          </p>
         </div>
         <button
           onClick={() => setShowModal(true)}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-md transition-colors"
+          className="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-md transition-colors"
         >
           New Session
         </button>
       </div>
 
       {runningSessions.length > 0 && (
-        <div className="mb-8">
+        <div className="mb-6 sm:mb-8">
           <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider mb-3">
             Running
           </h3>
@@ -289,12 +293,12 @@ function SessionCard({
   const running = session.status === "running";
   return (
     <div className="p-4 rounded-lg border border-zinc-800 bg-zinc-900">
-      <div className="flex items-start justify-between mb-2">
+      <div className="flex items-start gap-3 justify-between mb-2">
         <div>
-          <p className="font-medium text-sm">
+          <p className="font-medium text-sm break-all">
             {session.repo_owner}/{session.repo_name}
           </p>
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-zinc-500 break-all">
             {session.branch} &middot; {session.cli_type} &middot; {session.id}
           </p>
         </div>
@@ -302,18 +306,18 @@ function SessionCard({
           className={`w-2.5 h-2.5 rounded-full mt-1 ${running ? "bg-emerald-500" : "bg-zinc-600"}`}
         />
       </div>
-      <div className="flex gap-2 mt-3">
+      <div className="flex flex-wrap gap-2 mt-3">
         {running && onOpen && (
           <button
             onClick={onOpen}
-            className="text-xs bg-zinc-800 hover:bg-zinc-700 px-3 py-1 rounded transition-colors"
+            className="text-xs bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded transition-colors"
           >
             Open Terminal
           </button>
         )}
         <button
           onClick={onDelete}
-          className="text-xs text-zinc-400 hover:text-red-400 px-2 py-1 rounded border border-zinc-700 hover:border-red-800 transition-colors"
+          className="text-xs text-zinc-400 hover:text-red-400 px-3 py-1.5 rounded border border-zinc-700 hover:border-red-800 transition-colors"
         >
           {running ? "Stop" : "Remove"}
         </button>

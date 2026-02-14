@@ -64,44 +64,46 @@ function VirtualKeybar({ onKey }: VirtualKeybarProps) {
 
   return (
     <div className="flex-shrink-0 bg-zinc-900 border-t border-zinc-800 px-2 py-1.5 safe-area-pb">
-      <div className="flex items-center gap-1.5">
-        {/* Arrow keys */}
-        {btn("←", "left")}
-        {btn("↓", "down")}
-        {btn("↑", "up")}
-        {btn("→", "right")}
+      <div className="overflow-x-auto pb-0.5">
+        <div className="flex items-center gap-1.5 min-w-max">
+          {/* Arrow keys */}
+          {btn("←", "left")}
+          {btn("↓", "down")}
+          {btn("↑", "up")}
+          {btn("→", "right")}
 
-        <div className="w-px h-6 bg-zinc-700 mx-0.5" />
+          <div className="w-px h-6 bg-zinc-700 mx-0.5" />
 
-        {/* Common keys */}
-        {btn("Enter", "enter", "h-10 px-3")}
-        {btn("Tab", "tab", "h-10 px-3")}
+          {/* Common keys */}
+          {btn("Enter", "enter", "h-10 px-3")}
+          {btn("Tab", "tab", "h-10 px-3")}
 
-        <div className="flex-1" />
+          <div className="flex-1" />
 
-        {/* Toggle extra keys */}
-        <button
-          onTouchStart={(e) => {
-            e.preventDefault();
-            setShowExtra(!showExtra);
-          }}
-          onMouseDown={(e) => {
-            e.preventDefault();
-            setShowExtra(!showExtra);
-          }}
-          className={`flex items-center justify-center rounded-md border text-sm font-medium
-            select-none touch-manipulation h-10 px-2 ${
-              showExtra
-                ? "bg-zinc-600 border-zinc-500"
-                : "bg-zinc-800 border-zinc-700 active:bg-zinc-600"
-            }`}
-        >
-          ···
-        </button>
+          {/* Toggle extra keys */}
+          <button
+            onTouchStart={(e) => {
+              e.preventDefault();
+              setShowExtra(!showExtra);
+            }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setShowExtra(!showExtra);
+            }}
+            className={`flex items-center justify-center rounded-md border text-sm font-medium
+              select-none touch-manipulation h-10 px-2 ${
+                showExtra
+                  ? "bg-zinc-600 border-zinc-500"
+                  : "bg-zinc-800 border-zinc-700 active:bg-zinc-600"
+              }`}
+          >
+            ···
+          </button>
+        </div>
       </div>
 
       {showExtra && (
-        <div className="flex items-center gap-1.5 mt-1.5">
+        <div className="flex items-center gap-1.5 mt-1.5 overflow-x-auto">
           {btn("Esc", "escape")}
           {btn("^C", "ctrl-c")}
           {btn("⌫", "backspace")}

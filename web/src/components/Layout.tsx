@@ -1,4 +1,5 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 const navItems = [
   {
@@ -24,12 +25,58 @@ const navItems = [
 ];
 
 export default function Layout() {
+  const [isNavOpen, setIsNavOpen] = useState(false);
+  const location = useLocation();
+
+  useEffect(() => {
+    setIsNavOpen(false);
+  }, [location.pathname]);
+
   return (
-    <div className="flex h-screen bg-zinc-950 text-zinc-100">
-      <aside className="w-56 border-r border-zinc-800 flex flex-col">
+    <div className="flex h-dvh bg-zinc-950 text-zinc-100">
+      <button
+        type="button"
+        aria-label="Close navigation"
+        onClick={() => setIsNavOpen(false)}
+        className={`fixed inset-0 z-30 bg-black/60 transition-opacity md:hidden ${
+          isNavOpen ? "opacity-100" : "pointer-events-none opacity-0"
+        }`}
+      />
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 w-56 border-r border-zinc-800 bg-zinc-950 flex flex-col transform transition-transform duration-200 ease-out md:static md:translate-x-0 ${
+          isNavOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
         <div className="p-4 border-b border-zinc-800">
-          <h1 className="text-lg font-bold tracking-tight">Superposition</h1>
-          <p className="text-xs text-zinc-500">AI Coding Sessions</p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h1 className="text-lg font-bold tracking-tight">
+                Superposition
+              </h1>
+              <p className="text-xs text-zinc-500">AI Coding Sessions</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsNavOpen(false)}
+              className="md:hidden rounded p-1 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 transition-colors"
+              aria-label="Close menu"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
         <nav className="flex-1 p-2 space-y-1">
           {navItems.map((item) => (
@@ -37,6 +84,7 @@ export default function Layout() {
               key={item.to}
               to={item.to}
               end={item.to === "/"}
+              onClick={() => setIsNavOpen(false)}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
                   isActive
@@ -63,9 +111,43 @@ export default function Layout() {
           ))}
         </nav>
       </aside>
-      <main className="flex-1 overflow-auto">
-        <Outlet />
-      </main>
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-zinc-800">
+          <button
+            type="button"
+            onClick={() => setIsNavOpen(true)}
+            className="rounded p-1 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 transition-colors"
+            aria-label="Open menu"
+          >
+            <svg
+              className="w-6 h-6"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M4 6h16M4 12h16M4 18h16"
+              />
+            </svg>
+          </button>
+          <div>
+            <h1 className="text-sm font-semibold tracking-wide">
+              Superposition
+            </h1>
+            <p className="text-[11px] leading-tight text-zinc-500">
+              AI Coding Sessions
+            </p>
+          </div>
+        </header>
+
+        <main className="flex-1 overflow-auto">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }

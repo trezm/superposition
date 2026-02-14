@@ -72,8 +72,14 @@ export default function NewSessionModal({ open, onClose, onCreated }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-md">
+    <div
+      className="fixed inset-0 z-50 bg-black/60 p-4 sm:p-6 flex items-end sm:items-center justify-center overflow-y-auto"
+      onClick={onClose}
+    >
+      <div
+        className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 sm:p-6 w-full max-w-md max-h-[90dvh] overflow-y-auto safe-area-pb"
+        onClick={(e) => e.stopPropagation()}
+      >
         <h3 className="text-lg font-bold mb-4">New Session</h3>
 
         {error && (
@@ -93,7 +99,7 @@ export default function NewSessionModal({ open, onClose, onCreated }: Props) {
               <select
                 value={repoId ?? ""}
                 onChange={(e) => setRepoId(Number(e.target.value))}
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-sm"
+                className="w-full px-3 py-2.5 bg-zinc-800 border border-zinc-700 rounded-md text-sm"
               >
                 {repos.map((r) => (
                   <option key={r.id} value={r.id}>
@@ -111,7 +117,7 @@ export default function NewSessionModal({ open, onClose, onCreated }: Props) {
             <select
               value={sourceBranch}
               onChange={(e) => setSourceBranch(e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-sm"
+              className="w-full px-3 py-2.5 bg-zinc-800 border border-zinc-700 rounded-md text-sm"
             >
               {branches.map((b) => (
                 <option key={b} value={b}>
@@ -133,7 +139,7 @@ export default function NewSessionModal({ open, onClose, onCreated }: Props) {
               value={newBranch}
               onChange={(e) => setNewBranch(e.target.value)}
               placeholder="e.g. feat/add-login-page"
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-sm placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full px-3 py-2.5 bg-zinc-800 border border-zinc-700 rounded-md text-sm placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
 
@@ -144,7 +150,7 @@ export default function NewSessionModal({ open, onClose, onCreated }: Props) {
                 <button
                   key={type}
                   onClick={() => setCliType(type)}
-                  className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  className={`flex-1 px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${
                     cliType === type
                       ? "bg-blue-600 text-white"
                       : "bg-zinc-800 text-zinc-400 hover:text-white"
@@ -157,17 +163,17 @@ export default function NewSessionModal({ open, onClose, onCreated }: Props) {
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 mt-6">
+        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 mt-6">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors"
+            className="w-full sm:w-auto px-4 py-2.5 text-sm text-zinc-400 hover:text-white transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
             disabled={loading || !repoId || !sourceBranch || !newBranch.trim()}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
+            className="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
           >
             {loading ? "Creating..." : "Create Session"}
           </button>
