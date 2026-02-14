@@ -140,7 +140,9 @@ export default function Repositories() {
               >
                 <div>
                   <p className="font-medium break-all">
-                    {repo.repo_type === "local" ? repo.name : `${repo.owner}/${repo.name}`}
+                    {repo.repo_type === "local"
+                      ? repo.name
+                      : `${repo.owner}/${repo.name}`}
                     {repo.repo_type === "local" && (
                       <span className="ml-2 text-xs text-zinc-500 border border-zinc-700 px-1.5 py-0.5 rounded">
                         local
@@ -148,7 +150,9 @@ export default function Repositories() {
                     )}
                   </p>
                   {repo.repo_type === "local" && repo.source_path && (
-                    <p className="text-xs text-zinc-600 break-all">{repo.source_path}</p>
+                    <p className="text-xs text-zinc-600 break-all">
+                      {repo.source_path}
+                    </p>
                   )}
                   <p className="text-xs text-zinc-500">
                     {repo.clone_status === "ready"
