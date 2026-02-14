@@ -64,8 +64,8 @@ func (h *SessionsHandler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if body.CLIType != "claude" && body.CLIType != "codex" {
-		WriteError(w, http.StatusBadRequest, "cli_type must be 'claude' or 'codex'")
+	if body.CLIType != "claude" && body.CLIType != "codex" && body.CLIType != "gemini" {
+		WriteError(w, http.StatusBadRequest, "cli_type must be 'claude', 'codex', or 'gemini'")
 		return
 	}
 	if body.SourceBranch == "" {

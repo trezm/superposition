@@ -68,6 +68,13 @@ func main() {
 	if err := db.Migrate(database, string(migrationSQL)); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
+	migration002, err := migrationsFS.ReadFile("migrations/002_add_gemini.sql")
+	if err != nil {
+		log.Fatalf("Failed to read migration 002: %v", err)
+	}
+	if err := db.Migrate(database, string(migration002)); err != nil {
+		log.Fatalf("Failed to run migration 002: %v", err)
+	}
 
 	// Connect to or start the shepherd process
 	var mgr ptymgr.SessionManager

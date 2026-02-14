@@ -12,6 +12,7 @@ func CheckAll() ([]models.CLIStatus, bool) {
 	clis := []models.CLIStatus{
 		checkCLI("claude"),
 		checkCLI("codex"),
+		checkCLI("gemini"),
 	}
 
 	if !gitOk {

@@ -21,7 +21,7 @@ export default function NewSessionModal({ open, onClose, onCreated }: Props) {
   const [sourceBranch, setSourceBranch] = useState("");
   const [newBranch, setNewBranch] = useState("");
   const [branches, setBranches] = useState<string[]>([]);
-  const [cliType, setCliType] = useState<"claude" | "codex">("claude");
+  const [cliType, setCliType] = useState<"claude" | "codex" | "gemini">("claude");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -140,7 +140,7 @@ export default function NewSessionModal({ open, onClose, onCreated }: Props) {
           <div>
             <label className="block text-sm font-medium mb-1">CLI</label>
             <div className="flex gap-2">
-              {(["claude", "codex"] as const).map((type) => (
+              {(["claude", "codex", "gemini"] as const).map((type) => (
                 <button
                   key={type}
                   onClick={() => setCliType(type)}
@@ -150,7 +150,7 @@ export default function NewSessionModal({ open, onClose, onCreated }: Props) {
                       : "bg-zinc-800 text-zinc-400 hover:text-white"
                   }`}
                 >
-                  {type === "claude" ? "Claude Code" : "Codex"}
+                  {type === "claude" ? "Claude Code" : type === "codex" ? "Codex" : "Gemini CLI"}
                 </button>
               ))}
             </div>
