@@ -29,9 +29,9 @@ export default function Settings() {
   };
 
   return (
-    <div className="p-8 max-w-2xl">
-      <h2 className="text-2xl font-bold mb-1">Settings</h2>
-      <p className="text-zinc-400 mb-8">
+    <div className="w-full max-w-2xl p-4 sm:p-6 lg:p-8">
+      <h2 className="text-xl sm:text-2xl font-bold mb-1">Settings</h2>
+      <p className="text-sm sm:text-base text-zinc-400 mb-6 sm:mb-8">
         Configure your GitHub access and preferences.
       </p>
 
@@ -59,12 +59,12 @@ export default function Settings() {
             value={pat}
             onChange={(e) => setPat(e.target.value)}
             placeholder={loading ? "Loading..." : "ghp_xxxxxxxxxxxxxxxxxxxx"}
-            className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-md text-sm placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full px-3 py-2.5 bg-zinc-900 border border-zinc-700 rounded-md text-sm placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
         <button
           onClick={handleSave}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-md transition-colors"
+          className="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-md transition-colors"
         >
           Save
         </button>

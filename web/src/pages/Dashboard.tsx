@@ -22,9 +22,9 @@ export default function Dashboard() {
   }, []);
 
   return (
-    <div className="p-8 max-w-3xl">
-      <h2 className="text-2xl font-bold mb-1">Dashboard</h2>
-      <p className="text-zinc-400 mb-8">
+    <div className="w-full max-w-3xl p-4 sm:p-6 lg:p-8">
+      <h2 className="text-xl sm:text-2xl font-bold mb-1">Dashboard</h2>
+      <p className="text-sm sm:text-base text-zinc-400 mb-6 sm:mb-8">
         Run Claude Code and Codex sessions against your GitHub repos.
       </p>
 
@@ -66,13 +66,13 @@ function StatusCard({
   detail: string;
 }) {
   return (
-    <div className="flex items-center justify-between p-4 rounded-lg border border-zinc-800 bg-zinc-900">
+    <div className="flex items-start gap-3 sm:items-center justify-between p-4 rounded-lg border border-zinc-800 bg-zinc-900">
       <div>
         <p className="font-medium capitalize">{label}</p>
         <p className="text-sm text-zinc-500">{detail}</p>
       </div>
       <div
-        className={`w-3 h-3 rounded-full ${ok ? "bg-emerald-500" : "bg-amber-500"}`}
+        className={`w-3 h-3 rounded-full mt-1 sm:mt-0 ${ok ? "bg-emerald-500" : "bg-amber-500"}`}
       />
     </div>
   );
