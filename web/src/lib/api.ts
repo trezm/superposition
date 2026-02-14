@@ -5,6 +5,10 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
+  if (res.status === 401) {
+    window.location.href = "/auth/login";
+    throw new Error("Unauthorized");
+  }
   if (res.status === 204) return undefined as T;
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Request failed");

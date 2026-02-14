@@ -17,11 +17,13 @@ import (
 	"time"
 
 	"github.com/peterje/superposition/internal/db"
+	"github.com/peterje/superposition/internal/gateway"
 	gitops "github.com/peterje/superposition/internal/git"
 	"github.com/peterje/superposition/internal/preflight"
 	ptymgr "github.com/peterje/superposition/internal/pty"
 	"github.com/peterje/superposition/internal/server"
 	"github.com/peterje/superposition/internal/shepherd"
+	"github.com/peterje/superposition/internal/tunnel"
 	"github.com/peterje/superposition/web"
 )
 
@@ -29,15 +31,26 @@ import (
 var migrationsFS embed.FS
 
 func main() {
-	// Subcommand dispatch: "superposition shepherd" runs the shepherd process
-	if len(os.Args) > 1 && os.Args[1] == "shepherd" {
-		if err := shepherd.Run(); err != nil {
-			log.Fatalf("Shepherd failed: %v", err)
+	// Subcommand dispatch
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "shepherd":
+			if err := shepherd.Run(); err != nil {
+				log.Fatalf("Shepherd failed: %v", err)
+			}
+			return
+		case "gateway":
+			cfg := gateway.ParseConfig(os.Args[2:])
+			if err := gateway.Run(cfg, web.SPAHandler()); err != nil {
+				log.Fatalf("Gateway failed: %v", err)
+			}
+			return
 		}
-		return
 	}
 
 	port := flag.Int("port", 8800, "server port")
+	gatewayURL := flag.String("gateway", envOrDefault("SP_GATEWAY_URL", ""), "gateway URL (e.g. wss://gateway.example.com/tunnel)")
+	gatewaySecret := flag.String("gateway-secret", envOrDefault("SP_GATEWAY_SECRET", ""), "gateway pre-shared secret")
 	flag.Parse()
 
 	fmt.Println("Superposition - AI Coding Sessions")
@@ -117,6 +130,13 @@ func main() {
 		defer cancel()
 		httpSrv.Shutdown(ctx)
 	}()
+
+	// Start tunnel client if --gateway is set
+	if *gatewayURL != "" {
+		tc := tunnel.NewClient(*gatewayURL, *gatewaySecret, fmt.Sprintf("localhost:%d", *port))
+		go tc.Run()
+		fmt.Printf("Tunnel connecting to %s\n", *gatewayURL)
+	}
 
 	fmt.Printf("Server running at http://%s\n", addr)
 	if err := httpSrv.ListenAndServe(); err != http.ErrServerClosed {
@@ -328,4 +348,11 @@ func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 		return hj.Hijack()
 	}
 	return nil, nil, fmt.Errorf("underlying ResponseWriter does not implement http.Hijacker")
+}
+
+func envOrDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
