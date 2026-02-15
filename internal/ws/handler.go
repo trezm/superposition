@@ -5,9 +5,16 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	ptymgr "github.com/peterje/superposition/internal/pty"
+)
+
+const (
+	pingInterval = 30 * time.Second
+	pongWait     = 60 * time.Second
+	writeWait    = 10 * time.Second
 )
 
 var upgrader = websocket.Upgrader{
@@ -53,11 +60,25 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("ws: client connected to session %s", sessionID)
 
+	// Configure pong handler to extend read deadline on each pong
+	conn.SetReadDeadline(time.Now().Add(pongWait))
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
+
+	// Mutex to serialize writes (ping ticker + PTY output + close message)
+	var mu sync.Mutex
+
 	// Send replay buffer first (for reconnection)
 	replay := sess.Replay()
 	if len(replay) > 0 {
 		log.Printf("ws: sending %d bytes replay for session %s", len(replay), sessionID)
-		if err := conn.WriteMessage(websocket.BinaryMessage, replay); err != nil {
+		mu.Lock()
+		conn.SetWriteDeadline(time.Now().Add(writeWait))
+		err := conn.WriteMessage(websocket.BinaryMessage, replay)
+		mu.Unlock()
+		if err != nil {
 			log.Printf("ws: replay send failed: %v", err)
 			return
 		}
@@ -70,12 +91,41 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var wg sync.WaitGroup
 	done := make(chan struct{})
 
+	// Ping ticker to keep connection alive through proxies/gateways
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ticker := time.NewTicker(pingInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				mu.Lock()
+				conn.SetWriteDeadline(time.Now().Add(writeWait))
+				err := conn.WriteMessage(websocket.PingMessage, nil)
+				mu.Unlock()
+				if err != nil {
+					log.Printf("ws: ping failed for session %s: %v", sessionID, err)
+					return
+				}
+			case <-done:
+				return
+			case <-sess.Done():
+				return
+			}
+		}
+	}()
+
 	// PTY output -> WebSocket (via subscriber channel)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		for data := range outputCh {
-			if err := conn.WriteMessage(websocket.BinaryMessage, data); err != nil {
+			mu.Lock()
+			conn.SetWriteDeadline(time.Now().Add(writeWait))
+			err := conn.WriteMessage(websocket.BinaryMessage, data)
+			mu.Unlock()
+			if err != nil {
 				log.Printf("ws: write to client failed: %v", err)
 				return
 			}
@@ -112,8 +162,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		log.Printf("ws: client disconnected from session %s", sessionID)
 	case <-sess.Done():
 		log.Printf("ws: session %s ended", sessionID)
+		mu.Lock()
+		conn.SetWriteDeadline(time.Now().Add(writeWait))
 		conn.WriteMessage(websocket.CloseMessage,
 			websocket.FormatCloseMessage(websocket.CloseNormalClosure, "session ended"))
+		mu.Unlock()
 	}
 
 	wg.Wait()

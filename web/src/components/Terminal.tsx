@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from "react";
+import type { IDisposable } from "@xterm/xterm";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -121,6 +122,7 @@ export default function Terminal({
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const reconnectDelay = useRef(RECONNECT_DELAY);
   const disposed = useRef(false);
+  const onDataDisposable = useRef<IDisposable | null>(null);
   const isTouch = useIsTouchDevice();
 
   // Idle detection refs
@@ -161,7 +163,11 @@ export default function Terminal({
 
       ws.onmessage = (e) => {
         if (e.data instanceof ArrayBuffer) {
-          term.write(new Uint8Array(e.data));
+          try {
+            term.write(new Uint8Array(e.data));
+          } catch (err) {
+            console.error("terminal write error:", err);
+          }
         }
 
         // Idle detection: wait for settle period after first message (replay buffer burst)
@@ -191,16 +197,28 @@ export default function Terminal({
         if (e.code === 1000) {
           sessionEnded.current = true;
           onIdleChangeRef.current?.(true);
-          term.write("\r\n\x1b[90m[Session ended]\x1b[0m\r\n");
+          try {
+            term.write("\r\n\x1b[90m[Session ended]\x1b[0m\r\n");
+          } catch (err) {
+            console.error("terminal write error on session end:", err);
+          }
           return;
         }
         // Clear idle state during reconnect
         onIdleChangeRef.current?.(false);
         // Reconnect
-        term.write("\r\n\x1b[33m[Reconnecting...]\x1b[0m\r\n");
+        try {
+          term.write("\r\n\x1b[33m[Reconnecting...]\x1b[0m\r\n");
+        } catch (err) {
+          console.error("terminal write error on reconnect:", err);
+        }
         reconnectTimer.current = setTimeout(() => {
           // Clear terminal before replay to avoid duplication
-          term.clear();
+          try {
+            term.clear();
+          } catch (err) {
+            console.error("terminal clear error:", err);
+          }
           connect(term);
           reconnectDelay.current = Math.min(
             reconnectDelay.current * 2,
@@ -209,9 +227,13 @@ export default function Terminal({
         }, reconnectDelay.current);
       };
 
-      ws.onerror = () => {};
+      ws.onerror = (ev) => {
+        console.error("ws error for session", sessionId, ev);
+      };
 
-      term.onData((data) => {
+      // Dispose previous onData listener to prevent accumulation on reconnect
+      onDataDisposable.current?.dispose();
+      onDataDisposable.current = term.onData((data) => {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(new TextEncoder().encode(data));
         }
@@ -289,6 +311,7 @@ export default function Terminal({
       clearTimeout(idleTimer.current);
       clearTimeout(settleTimer.current);
       container.removeEventListener("wheel", onWheel);
+      onDataDisposable.current?.dispose();
       observer.disconnect();
       wsRef.current?.close();
       term.dispose();

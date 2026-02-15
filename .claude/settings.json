@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "case \"$TOOL_INPUT\" in *'git push'*) cd \"$CLAUDE_PROJECT_DIR/web\" && npx prettier --check 'src/**/*.{ts,tsx,css}' && npx eslint src --max-warnings=0 && cd \"$CLAUDE_PROJECT_DIR\" && go vet ./internal/... ;; esac",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
+}
