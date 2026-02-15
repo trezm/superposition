@@ -56,9 +56,9 @@ func CloneBare(cloneURL, pat, owner, name string) (string, error) {
 		return "", fmt.Errorf("git clone: %s: %w", string(out), err)
 	}
 
-	// git clone --bare doesn't set a fetch refspec, so git fetch won't update
-	// local branch refs. Configure it so fetch maps remote branches to local ones.
-	exec.Command("git", "-C", localPath, "config", "remote.origin.fetch", "+refs/heads/*:refs/heads/*").Run()
+	// git clone --bare doesn't set a fetch refspec. Configure it to fetch into
+	// a remote-tracking namespace so it won't conflict with worktree checkouts.
+	exec.Command("git", "-C", localPath, "config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*").Run()
 
 	return localPath, nil
 }
@@ -109,8 +109,10 @@ func CloneBareLocal(sourcePath, name string) (string, error) {
 }
 
 func Fetch(barePath, pat string) error {
-	// Ensure fetch refspec is configured (bare clones don't set this by default)
-	exec.Command("git", "-C", barePath, "config", "remote.origin.fetch", "+refs/heads/*:refs/heads/*").Run()
+	// Fetch into a remote-tracking namespace to avoid conflicts with branches
+	// checked out in worktrees. We then fast-forward local branches that
+	// aren't currently checked out.
+	exec.Command("git", "-C", barePath, "config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*").Run()
 
 	cmd := exec.Command("git", "-C", barePath, "fetch", "--all", "--prune")
 	if pat != "" {
@@ -126,7 +128,39 @@ func Fetch(barePath, pat string) error {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git fetch: %s: %w", string(out), err)
 	}
+
+	// Update local branches from remote-tracking refs, skipping any that are
+	// checked out in a worktree.
+	checkedOut := worktreeBranches(barePath)
+	remotes, _ := exec.Command("git", "-C", barePath, "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin/").Output()
+	for _, line := range strings.Split(strings.TrimSpace(string(remotes)), "\n") {
+		branch := strings.TrimPrefix(line, "origin/")
+		if branch == "" || branch == "HEAD" {
+			continue
+		}
+		if checkedOut[branch] {
+			continue
+		}
+		// Fast-forward the local branch to match the remote-tracking ref
+		exec.Command("git", "-C", barePath, "update-ref", "refs/heads/"+branch, "refs/remotes/origin/"+branch).Run()
+	}
+
 	return nil
+}
+
+// worktreeBranches returns the set of branch names currently checked out in any worktree.
+func worktreeBranches(barePath string) map[string]bool {
+	out, err := exec.Command("git", "-C", barePath, "worktree", "list", "--porcelain").Output()
+	if err != nil {
+		return nil
+	}
+	branches := make(map[string]bool)
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(line, "branch refs/heads/") {
+			branches[strings.TrimPrefix(line, "branch refs/heads/")] = true
+		}
+	}
+	return branches
 }
 
 func getAuthURL(barePath, pat string) string {
@@ -152,7 +186,14 @@ func AddWorktree(barePath, worktreePath, newBranch, sourceBranch string) error {
 		return fmt.Errorf("create worktree parent: %w", err)
 	}
 
-	cmd := exec.Command("git", "-C", barePath, "worktree", "add", "-b", newBranch, worktreePath, sourceBranch)
+	// Prefer the remote-tracking ref so we always base off the latest fetched
+	// state, and fall back to the local branch ref.
+	base := sourceBranch
+	if err := exec.Command("git", "-C", barePath, "rev-parse", "--verify", "refs/remotes/origin/"+sourceBranch).Run(); err == nil {
+		base = "refs/remotes/origin/" + sourceBranch
+	}
+
+	cmd := exec.Command("git", "-C", barePath, "worktree", "add", "-b", newBranch, worktreePath, base)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git worktree add: %s: %w", string(out), err)
 	}
