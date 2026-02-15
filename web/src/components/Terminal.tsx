@@ -253,6 +253,27 @@ export default function Terminal({
     });
     observer.observe(containerRef.current);
 
+    // xterm.js v6 uses a custom scrollbar that doesn't handle wheel events,
+    // so we bridge wheel events to the terminal's scroll API.
+    const container = containerRef.current;
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY === 0) return;
+      e.preventDefault();
+      const lineHeight = Math.ceil(term.options.fontSize! * 1.2);
+      let lines: number;
+      if (e.deltaMode === WheelEvent.DOM_DELTA_PIXEL) {
+        lines =
+          Math.sign(e.deltaY) *
+          Math.max(1, Math.round(Math.abs(e.deltaY) / lineHeight));
+      } else if (e.deltaMode === WheelEvent.DOM_DELTA_LINE) {
+        lines = Math.round(e.deltaY);
+      } else {
+        lines = Math.sign(e.deltaY) * term.rows;
+      }
+      term.scrollLines(lines);
+    };
+    container.addEventListener("wheel", onWheel, { passive: false });
+
     term.onResize(({ rows, cols }) => {
       const ws = wsRef.current;
       if (ws && ws.readyState === WebSocket.OPEN) {
@@ -267,6 +288,7 @@ export default function Terminal({
       clearTimeout(reconnectTimer.current);
       clearTimeout(idleTimer.current);
       clearTimeout(settleTimer.current);
+      container.removeEventListener("wheel", onWheel);
       observer.disconnect();
       wsRef.current?.close();
       term.dispose();
