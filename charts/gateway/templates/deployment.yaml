@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gateway.fullname" . }}
+  labels:
+    {{- include "gateway.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "gateway.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "gateway.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.tls.certSecret }}
+          args:
+            - --tls-cert
+            - /tls/tls.crt
+            - --tls-key
+            - /tls/tls.key
+          {{- end }}
+          ports:
+            - name: https
+              containerPort: 443
+              protocol: TCP
+          env:
+            - name: SP_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gateway.fullname" . }}
+                  key: username
+            - name: SP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gateway.fullname" . }}
+                  key: password
+            - name: SP_GATEWAY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gateway.fullname" . }}
+                  key: gateway-secret
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: https
+              scheme: HTTPS
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          {{- if .Values.tls.certSecret }}
+          volumeMounts:
+            - name: tls
+              mountPath: /tls
+              readOnly: true
+          {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- if .Values.tls.certSecret }}
+      volumes:
+        - name: tls
+          secret:
+            secretName: {{ .Values.tls.certSecret }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
