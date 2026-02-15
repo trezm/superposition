@@ -211,6 +211,8 @@ func (h *ReposHandler) HandleSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("Sync requested for repo id=%d", id)
+
 	var repo models.Repository
 	err = h.db.QueryRow(`SELECT id, local_path, clone_status, repo_type FROM repositories WHERE id = ?`, id).
 		Scan(&repo.ID, &repo.LocalPath, &repo.CloneStatus, &repo.RepoType)
@@ -218,22 +220,33 @@ func (h *ReposHandler) HandleSync(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusNotFound, "repository not found")
 		return
 	}
+	if err != nil {
+		log.Printf("Sync repo id=%d: db query failed: %v", id, err)
+		WriteError(w, http.StatusInternalServerError, "database error")
+		return
+	}
 	if repo.CloneStatus != "ready" {
+		log.Printf("Sync repo id=%d: not ready (status=%s)", id, repo.CloneStatus)
 		WriteError(w, http.StatusBadRequest, "repository not ready")
 		return
 	}
 
+	log.Printf("Sync repo id=%d: fetching (path=%s)", id, repo.LocalPath)
 	pat := ""
 	if repo.RepoType != "local" {
 		pat = h.getPAT()
 	}
 	if err := git.Fetch(repo.LocalPath, pat); err != nil {
+		log.Printf("Sync repo id=%d: git fetch failed: %v", id, err)
 		WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	now := time.Now()
-	h.db.Exec(`UPDATE repositories SET last_synced = ? WHERE id = ?`, now, id)
+	if _, err := h.db.Exec(`UPDATE repositories SET last_synced = ? WHERE id = ?`, now, id); err != nil {
+		log.Printf("Sync repo id=%d: failed to update last_synced: %v", id, err)
+	}
+	log.Printf("Sync repo id=%d: complete", id)
 	WriteJSON(w, http.StatusOK, map[string]string{"status": "synced"})
 }
 
