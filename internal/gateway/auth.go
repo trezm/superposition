@@ -78,16 +78,23 @@ func (a *Auth) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate CSRF token
-	csrf := a.generateCSRF()
-	http.SetCookie(w, &http.Cookie{
-		Name:     csrfCookieName,
-		Value:    csrf,
-		Path:     "/auth/",
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		Secure:   true,
-	})
+	// Reuse existing CSRF token if present, so that background requests
+	// (e.g. favicon) that redirect to /auth/login don't overwrite the
+	// token embedded in an already-rendered login form.
+	csrf := ""
+	if c, err := r.Cookie(csrfCookieName); err == nil && c.Value != "" {
+		csrf = c.Value
+	} else {
+		csrf = a.generateCSRF()
+		http.SetCookie(w, &http.Cookie{
+			Name:     csrfCookieName,
+			Value:    csrf,
+			Path:     "/auth/",
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			Secure:   true,
+		})
+	}
 
 	a.loginPage.Render(w, csrf, "")
 }
