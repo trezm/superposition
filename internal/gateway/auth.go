@@ -85,7 +85,7 @@ func (a *Auth) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 		Value:    csrf,
 		Path:     "/auth/",
 		HttpOnly: true,
-		SameSite: http.SameSiteStrictMode,
+		SameSite: http.SameSiteLaxMode,
 		Secure:   true,
 	})
 
@@ -107,7 +107,7 @@ func (a *Auth) handleLogin(w http.ResponseWriter, r *http.Request) {
 			Value:    csrf,
 			Path:     "/auth/",
 			HttpOnly: true,
-			SameSite: http.SameSiteStrictMode,
+			SameSite: http.SameSiteLaxMode,
 			Secure:   true,
 		})
 		a.loginPage.Render(w, csrf, "Invalid request, please try again")
@@ -124,7 +124,7 @@ func (a *Auth) handleLogin(w http.ResponseWriter, r *http.Request) {
 			Value:    csrf,
 			Path:     "/auth/",
 			HttpOnly: true,
-			SameSite: http.SameSiteStrictMode,
+			SameSite: http.SameSiteLaxMode,
 			Secure:   true,
 		})
 		a.loginPage.Render(w, csrf, "Invalid username or password")
