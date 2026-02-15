@@ -1,0 +1,21 @@
+image:
+  repository: ghcr.io/peterje/superposition-gateway
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: LoadBalancer
+  port: 443
+
+auth:
+  username: ""
+  password: ""
+  gatewaySecret: ""
+
+tls:
+  certSecret: ""
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

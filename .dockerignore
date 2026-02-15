@@ -1,0 +1,11 @@
+web/node_modules/
+web/dist/
+superposition
+.git/
+.github/
+.vscode/
+.idea/
+charts/
+docs/
+*.md
+!web/*.md
