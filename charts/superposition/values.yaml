@@ -1,0 +1,22 @@
+image:
+  repository: ghcr.io/peterje/superposition
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8800
+
+persistence:
+  enabled: true
+  size: 10Gi
+  storageClass: ""
+
+gateway:
+  url: ""
+  secret: ""
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
