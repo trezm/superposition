@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api } from "../lib/api";
+import { api, SuperpositionOfflineError } from "../lib/api";
 
 interface CLIStatus {
   name: string;
@@ -16,9 +16,19 @@ interface Health {
 
 export default function Dashboard() {
   const [health, setHealth] = useState<Health | null>(null);
+  const [offline, setOffline] = useState(false);
 
   useEffect(() => {
-    api.health().then(setHealth).catch(console.error);
+    api
+      .health()
+      .then(setHealth)
+      .catch((e) => {
+        if (e instanceof SuperpositionOfflineError) {
+          setOffline(true);
+        } else {
+          console.error(e);
+        }
+      });
   }, []);
 
   return (
@@ -27,6 +37,12 @@ export default function Dashboard() {
       <p className="text-sm sm:text-base text-zinc-400 mb-6 sm:mb-8">
         Run Claude Code and Codex sessions against your GitHub repos.
       </p>
+
+      {offline && (
+        <p className="text-sm text-zinc-500">
+          System status unavailable while superposition is offline.
+        </p>
+      )}
 
       {health && (
         <div className="space-y-4">

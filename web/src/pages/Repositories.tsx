@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { api } from "../lib/api";
+import { api, SuperpositionOfflineError } from "../lib/api";
 
 interface LocalRepo {
   id: number;
@@ -35,14 +35,40 @@ export default function Repositories() {
   const [localPath, setLocalPath] = useState("");
   const [localError, setLocalError] = useState("");
 
-  const loadLocal = useCallback(() => {
-    api.getRepos().then(setLocalRepos).catch(console.error);
+  const pollDelayRef = useRef(3_000);
+
+  const loadLocal = useCallback(async () => {
+    try {
+      const data = await api.getRepos();
+      setLocalRepos(data);
+      pollDelayRef.current = 3_000;
+    } catch (e) {
+      if (e instanceof SuperpositionOfflineError) {
+        pollDelayRef.current = 30_000;
+      } else {
+        console.error(e);
+      }
+    }
   }, []);
 
   useEffect(() => {
-    loadLocal();
-    const interval = setInterval(loadLocal, 3000);
-    return () => clearInterval(interval);
+    let timeout: ReturnType<typeof setTimeout>;
+    let cancelled = false;
+
+    function schedule() {
+      timeout = setTimeout(async () => {
+        await loadLocal();
+        if (!cancelled) schedule();
+      }, pollDelayRef.current);
+    }
+
+    loadLocal().then(() => {
+      if (!cancelled) schedule();
+    });
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
   }, [loadLocal]);
 
   const searchGitHub = useCallback(async (query: string, refresh?: boolean) => {

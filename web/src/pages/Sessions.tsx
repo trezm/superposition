@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api } from "../lib/api";
+import { api, SuperpositionOfflineError } from "../lib/api";
 import Terminal from "../components/Terminal";
 import NewSessionModal from "../components/NewSessionModal";
 
@@ -33,14 +33,40 @@ export default function Sessions() {
     [navigate],
   );
 
-  const load = useCallback(() => {
-    api.getSessions().then(setSessions).catch(console.error);
+  const pollDelayRef = useRef(5_000);
+
+  const load = useCallback(async () => {
+    try {
+      const data = await api.getSessions();
+      setSessions(data);
+      pollDelayRef.current = 5_000;
+    } catch (e) {
+      if (e instanceof SuperpositionOfflineError) {
+        pollDelayRef.current = 30_000;
+      } else {
+        console.error(e);
+      }
+    }
   }, []);
 
   useEffect(() => {
-    load();
-    const interval = setInterval(load, 5000);
-    return () => clearInterval(interval);
+    let timeout: ReturnType<typeof setTimeout>;
+    let cancelled = false;
+
+    function schedule() {
+      timeout = setTimeout(async () => {
+        await load();
+        if (!cancelled) schedule();
+      }, pollDelayRef.current);
+    }
+
+    load().then(() => {
+      if (!cancelled) schedule();
+    });
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
   }, [load]);
 
   // Browser tab title when sessions are idle

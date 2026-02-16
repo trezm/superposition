@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { useConnectionStatus } from "../hooks/useConnectionStatus";
 
 const navItems = [
   {
@@ -27,6 +28,7 @@ const navItems = [
 export default function Layout() {
   const [isNavOpen, setIsNavOpen] = useState(false);
   const location = useLocation();
+  const connectionStatus = useConnectionStatus();
 
   useEffect(() => {
     setIsNavOpen(false);
@@ -143,6 +145,13 @@ export default function Layout() {
             </p>
           </div>
         </header>
+
+        {connectionStatus === "offline" && (
+          <div className="px-4 py-2 bg-amber-600/20 border-b border-amber-700/50 text-amber-300 text-sm text-center">
+            Superposition is offline — your laptop may be asleep or
+            disconnected.
+          </div>
+        )}
 
         <main className="flex-1 overflow-auto">
           <Outlet />

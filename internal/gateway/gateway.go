@@ -50,7 +50,7 @@ func Run(cfg Config, spaHandler http.Handler) error {
 	// Uses a distinct path so /api/health is proxied to the superposition server.
 	mux.HandleFunc("GET /gateway/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"ok","gateway":true}`))
+		fmt.Fprintf(w, `{"status":"ok","gateway":true,"connected":%t}`, tun.Connected())
 	})
 
 	// Everything else goes through auth middleware → proxy
