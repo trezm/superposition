@@ -61,29 +61,35 @@ export default function Sessions() {
 
   // OS notifications for idle sessions
   useEffect(() => {
+    if (
+      typeof Notification === "undefined" ||
+      Notification.permission !== "granted"
+    )
+      return;
+
     for (const sessionId of idleSessions) {
       if (notifiedSessions.current.has(sessionId)) continue;
 
-      notifiedSessions.current.add(sessionId);
       const session = sessions.find((s) => s.id === sessionId);
       const label = session
         ? `${session.repo_name}/${session.branch}`
         : sessionId;
 
-      if (
-        typeof Notification !== "undefined" &&
-        Notification.permission === "granted"
-      ) {
+      try {
         const n = new Notification("Superposition", {
           body: `${label} needs your attention`,
+          tag: `idle-${sessionId}`,
         });
         n.onclick = () => {
           window.focus();
           openTab(sessionId);
         };
+        notifiedSessions.current.add(sessionId);
+      } catch (err) {
+        console.error("Failed to send notification:", err);
       }
     }
-  }, [idleSessions, activeTab, sessions, openTab]);
+  }, [idleSessions, sessions, openTab]);
 
   const handleIdleChange = useCallback((sessionId: string, idle: boolean) => {
     setIdleSessions((prev) => {
@@ -252,6 +258,7 @@ export default function Sessions() {
               <SessionCard
                 key={s.id}
                 session={s}
+                idle={idleSessions.has(s.id)}
                 onOpen={() => openTab(s.id)}
                 onDelete={() => handleDelete(s.id)}
               />
@@ -294,10 +301,12 @@ export default function Sessions() {
 
 function SessionCard({
   session,
+  idle,
   onOpen,
   onDelete,
 }: {
   session: SessionInfo;
+  idle?: boolean;
   onOpen?: () => void;
   onDelete: () => void;
 }) {
@@ -314,7 +323,13 @@ function SessionCard({
           </p>
         </div>
         <div
-          className={`w-2.5 h-2.5 rounded-full mt-1 ${running ? "bg-emerald-500" : "bg-zinc-600"}`}
+          className={`w-2.5 h-2.5 rounded-full mt-1 ${
+            !running
+              ? "bg-zinc-600"
+              : idle
+                ? "bg-amber-500 animate-pulse"
+                : "bg-emerald-500"
+          }`}
         />
       </div>
       <div className="flex flex-wrap gap-2 mt-3">
