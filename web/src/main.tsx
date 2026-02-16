@@ -22,17 +22,17 @@ createRoot(document.getElementById("root")!).render(
     <ErrorBoundary>
       <ToastProvider>
         <IdleMonitorProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route element={<Layout />}>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/repos" element={<Repositories />} />
-              <Route path="/sessions" element={<Sessions />} />
-              <Route path="/sessions/:sessionId" element={<Sessions />} />
-            </Route>
-          </Routes>
-        </BrowserRouter>
+          <BrowserRouter>
+            <Routes>
+              <Route element={<Layout />}>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="/repos" element={<Repositories />} />
+                <Route path="/sessions" element={<Sessions />} />
+                <Route path="/sessions/:sessionId" element={<Sessions />} />
+              </Route>
+            </Routes>
+          </BrowserRouter>
         </IdleMonitorProvider>
       </ToastProvider>
     </ErrorBoundary>

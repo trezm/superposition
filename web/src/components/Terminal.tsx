@@ -109,10 +109,7 @@ function VirtualKeybar({ onKey }: VirtualKeybarProps) {
   );
 }
 
-export default function Terminal({
-  sessionId,
-  visible = true,
-}: TerminalProps) {
+export default function Terminal({ sessionId, visible = true }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -159,7 +156,6 @@ export default function Terminal({
             console.error("terminal write error:", err);
           }
         }
-
       };
 
       ws.onclose = (e) => {

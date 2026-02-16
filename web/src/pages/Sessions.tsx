@@ -187,10 +187,7 @@ export default function Sessions() {
               className="absolute inset-0 p-1"
               style={{ display: activeTab === id ? "block" : "none" }}
             >
-              <Terminal
-                sessionId={id}
-                visible={activeTab === id}
-              />
+              <Terminal sessionId={id} visible={activeTab === id} />
             </div>
           ))}
         </div>
