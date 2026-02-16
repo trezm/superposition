@@ -110,7 +110,11 @@ function NotificationRequest() {
         <span>✓ Notifications enabled</span>
         <button
           onClick={() =>
-            new Notification("Superposition", { body: "Test notification" })
+            navigator.serviceWorker?.getRegistration().then((reg) =>
+              reg?.showNotification("Superposition", {
+                body: "Test notification",
+              }),
+            )
           }
           className="text-xs text-blue-400 hover:underline ml-2"
         >

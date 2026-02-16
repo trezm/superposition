@@ -75,21 +75,20 @@ export default function Sessions() {
         ? `${session.repo_name}/${session.branch}`
         : sessionId;
 
-      try {
-        const n = new Notification("Superposition", {
-          body: `${label} needs your attention`,
-          tag: `idle-${sessionId}`,
-        });
-        n.onclick = () => {
-          window.focus();
-          openTab(sessionId);
-        };
-        notifiedSessions.current.add(sessionId);
-      } catch (err) {
-        console.error("Failed to send notification:", err);
-      }
+      navigator.serviceWorker
+        ?.getRegistration()
+        .then((reg) => {
+          if (!reg) return;
+          reg.showNotification("Superposition", {
+            body: `${label} needs your attention`,
+            tag: `idle-${sessionId}`,
+            data: { sessionId },
+          });
+          notifiedSessions.current.add(sessionId);
+        })
+        .catch((err) => console.error("Failed to send notification:", err));
     }
-  }, [idleSessions, sessions, openTab]);
+  }, [idleSessions, sessions]);
 
   const handleIdleChange = useCallback((sessionId: string, idle: boolean) => {
     setIdleSessions((prev) => {

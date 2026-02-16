@@ -10,6 +10,10 @@ import Settings from "./pages/Settings";
 import Repositories from "./pages/Repositories";
 import Sessions from "./pages/Sessions";
 
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ErrorBoundary>
