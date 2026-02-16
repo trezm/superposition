@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import Terminal from "../components/Terminal";
+import TerminalPreview from "../components/TerminalPreview";
 import NewSessionModal from "../components/NewSessionModal";
 
 interface SessionInfo {
@@ -317,6 +318,14 @@ function SessionCard({
           className={`w-2.5 h-2.5 rounded-full mt-1 ${running ? "bg-emerald-500" : "bg-zinc-600"}`}
         />
       </div>
+      {running && (
+        <div
+          className="mt-2 cursor-pointer rounded overflow-hidden border border-zinc-800"
+          onClick={onOpen}
+        >
+          <TerminalPreview sessionId={session.id} />
+        </div>
+      )}
       <div className="flex flex-wrap gap-2 mt-3">
         {running && onOpen && (
           <button

@@ -136,6 +136,19 @@ func (h *SessionsHandler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *SessionsHandler) HandleReplay(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	sess := h.manager.Get(id)
+	if sess == nil {
+		WriteError(w, http.StatusNotFound, "session not found or not running")
+		return
+	}
+	replay := sess.Replay()
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.WriteHeader(http.StatusOK)
+	w.Write(replay)
+}
+
 func (h *SessionsHandler) HandleDelete(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	deleteLocal := true

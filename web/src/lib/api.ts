@@ -79,4 +79,13 @@ export const api = {
     request<void>(`/api/sessions/${id}?delete_local=${deleteLocal}`, {
       method: "DELETE",
     }),
+  getSessionReplay: (id: string): Promise<ArrayBuffer> =>
+    fetch(`/api/sessions/${id}/replay`).then((res) => {
+      if (res.status === 401) {
+        window.location.href = "/auth/login";
+        throw new Error("Unauthorized");
+      }
+      if (!res.ok) throw new Error("Failed to fetch replay");
+      return res.arrayBuffer();
+    }),
 };
