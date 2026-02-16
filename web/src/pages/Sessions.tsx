@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api, SuperpositionOfflineError } from "../lib/api";
 import Terminal from "../components/Terminal";
 import NewSessionModal from "../components/NewSessionModal";
+import { useIdleMonitor } from "../components/IdleMonitorContext";
 
 interface SessionInfo {
   id: string;
@@ -22,8 +23,7 @@ export default function Sessions() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [openTabs, setOpenTabs] = useState<string[]>([]);
   const [showModal, setShowModal] = useState(false);
-  const [idleSessions, setIdleSessions] = useState<Set<string>>(new Set());
-  const notifiedSessions = useRef<Set<string>>(new Set());
+  const { idleSessions } = useIdleMonitor();
 
   const openTab = useCallback(
     (id: string) => {
@@ -69,12 +69,6 @@ export default function Sessions() {
     };
   }, [load]);
 
-  // Browser tab title when sessions are idle
-  useEffect(() => {
-    document.title =
-      idleSessions.size > 0 ? "(!) Superposition" : "Superposition";
-  }, [idleSessions]);
-
   useEffect(() => {
     if (!activeTab) {
       setOpenTabs((prev) => (prev.length === 0 ? prev : []));
@@ -85,50 +79,6 @@ export default function Sessions() {
     );
   }, [activeTab]);
 
-  // OS notifications for idle sessions
-  useEffect(() => {
-    if (
-      typeof Notification === "undefined" ||
-      Notification.permission !== "granted"
-    )
-      return;
-
-    for (const sessionId of idleSessions) {
-      if (notifiedSessions.current.has(sessionId)) continue;
-
-      const session = sessions.find((s) => s.id === sessionId);
-      const label = session
-        ? `${session.repo_name}/${session.branch}`
-        : sessionId;
-
-      navigator.serviceWorker
-        ?.getRegistration()
-        .then((reg) => {
-          if (!reg) return;
-          reg.showNotification("Superposition", {
-            body: `${label} needs your attention`,
-            tag: `idle-${sessionId}`,
-            data: { sessionId },
-          });
-          notifiedSessions.current.add(sessionId);
-        })
-        .catch((err) => console.error("Failed to send notification:", err));
-    }
-  }, [idleSessions, sessions]);
-
-  const handleIdleChange = useCallback((sessionId: string, idle: boolean) => {
-    setIdleSessions((prev) => {
-      const next = new Set(prev);
-      if (idle) {
-        next.add(sessionId);
-      } else {
-        next.delete(sessionId);
-        notifiedSessions.current.delete(sessionId);
-      }
-      return next;
-    });
-  }, []);
-
   const handleCreated = (session: SessionInfo) => {
     load();
     openTab(session.id);
@@ -137,12 +87,6 @@ export default function Sessions() {
   const closeTab = (id: string) => {
     const remaining = openTabs.filter((t) => t !== id);
     setOpenTabs(remaining);
-    setIdleSessions((prev) => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-    notifiedSessions.current.delete(id);
     if (activeTab === id) {
       navigate(
         remaining.length > 0
@@ -246,7 +190,6 @@ export default function Sessions() {
               <Terminal
                 sessionId={id}
                 visible={activeTab === id}
-                onIdleChange={(idle) => handleIdleChange(id, idle)}
               />
             </div>
           ))}

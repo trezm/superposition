@@ -8,7 +8,6 @@ import "@xterm/xterm/css/xterm.css";
 interface TerminalProps {
   sessionId: string;
   visible?: boolean;
-  onIdleChange?: (idle: boolean) => void;
 }
 
 const RECONNECT_DELAY = 1000;
@@ -113,7 +112,6 @@ function VirtualKeybar({ onKey }: VirtualKeybarProps) {
 export default function Terminal({
   sessionId,
   visible = true,
-  onIdleChange,
 }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
@@ -124,14 +122,6 @@ export default function Terminal({
   const disposed = useRef(false);
   const onDataDisposable = useRef<IDisposable | null>(null);
   const isTouch = useIsTouchDevice();
-
-  // Idle detection refs
-  const idleTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const settled = useRef(false);
-  const settleTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const sessionEnded = useRef(false);
-  const onIdleChangeRef = useRef(onIdleChange);
-  onIdleChangeRef.current = onIdleChange;
 
   const sendInput = useCallback((data: string) => {
     const ws = wsRef.current;
@@ -170,33 +160,11 @@ export default function Terminal({
           }
         }
 
-        // Idle detection: wait for settle period after first message (replay buffer burst)
-        if (!settled.current && !settleTimer.current) {
-          settleTimer.current = setTimeout(() => {
-            settled.current = true;
-          }, 2000);
-        }
-
-        if (settled.current && !sessionEnded.current) {
-          clearTimeout(idleTimer.current);
-          onIdleChangeRef.current?.(false);
-          idleTimer.current = setTimeout(() => {
-            onIdleChangeRef.current?.(true);
-          }, 5000);
-        }
       };
 
       ws.onclose = (e) => {
-        // Clear idle detection timers
-        clearTimeout(idleTimer.current);
-        clearTimeout(settleTimer.current);
-        settled.current = false;
-        settleTimer.current = undefined;
-
         if (disposed.current) return;
         if (e.code === 1000) {
-          sessionEnded.current = true;
-          onIdleChangeRef.current?.(true);
           try {
             term.write("\r\n\x1b[90m[Session ended]\x1b[0m\r\n");
           } catch (err) {
@@ -204,8 +172,6 @@ export default function Terminal({
           }
           return;
         }
-        // Clear idle state during reconnect
-        onIdleChangeRef.current?.(false);
         // Reconnect
         try {
           term.write("\r\n\x1b[33m[Reconnecting...]\x1b[0m\r\n");
@@ -308,8 +274,6 @@ export default function Terminal({
     return () => {
       disposed.current = true;
       clearTimeout(reconnectTimer.current);
-      clearTimeout(idleTimer.current);
-      clearTimeout(settleTimer.current);
       container.removeEventListener("wheel", onWheel);
       onDataDisposable.current?.dispose();
       observer.disconnect();
