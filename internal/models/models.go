@@ -31,6 +31,8 @@ type Session struct {
 	Status       string    `json:"status"`
 	PID          *int      `json:"pid"`
 	CreatedAt    time.Time `json:"created_at"`
+	SourceBranch string    `json:"source_branch"`
+	BaseCommit   string    `json:"base_commit"`
 }
 
 type CLIStatus struct {

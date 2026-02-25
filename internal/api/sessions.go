@@ -27,7 +27,7 @@ func NewSessionsHandler(db *sql.DB, manager ptymgr.SessionManager) *SessionsHand
 
 func (h *SessionsHandler) HandleList(w http.ResponseWriter, _ *http.Request) {
 	rows, err := h.db.Query(`SELECT s.id, s.repo_id, s.worktree_path, s.branch, s.cli_type, s.status, s.pid, s.created_at,
-		r.owner, r.name FROM sessions s JOIN repositories r ON s.repo_id = r.id ORDER BY s.created_at DESC`)
+		s.source_branch, s.base_commit, r.owner, r.name FROM sessions s JOIN repositories r ON s.repo_id = r.id ORDER BY s.created_at DESC`)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -43,7 +43,8 @@ func (h *SessionsHandler) HandleList(w http.ResponseWriter, _ *http.Request) {
 	sessions := []sessionWithRepo{}
 	for rows.Next() {
 		var s sessionWithRepo
-		if err := rows.Scan(&s.ID, &s.RepoID, &s.WorktreePath, &s.Branch, &s.CLIType, &s.Status, &s.PID, &s.CreatedAt, &s.RepoOwner, &s.RepoName); err != nil {
+		if err := rows.Scan(&s.ID, &s.RepoID, &s.WorktreePath, &s.Branch, &s.CLIType, &s.Status, &s.PID, &s.CreatedAt,
+			&s.SourceBranch, &s.BaseCommit, &s.RepoOwner, &s.RepoName); err != nil {
 			WriteError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -104,6 +105,9 @@ func (h *SessionsHandler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Resolve the base commit SHA for diff support
+	baseCommit, _ := git.ResolveCommit(worktreePath, "HEAD")
+
 	// Resolve CLI command (may include args from settings override)
 	command := resolveCommand(h.db, body.CLIType)
 
@@ -116,9 +120,9 @@ func (h *SessionsHandler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now()
-	h.db.Exec(`INSERT INTO sessions (id, repo_id, worktree_path, branch, cli_type, status, pid, created_at)
-		VALUES (?, ?, ?, ?, ?, 'running', ?, ?)`,
-		sessionID, body.RepoID, worktreePath, body.NewBranch, body.CLIType, pid, now)
+	h.db.Exec(`INSERT INTO sessions (id, repo_id, worktree_path, branch, cli_type, status, pid, created_at, source_branch, base_commit)
+		VALUES (?, ?, ?, ?, ?, 'running', ?, ?, ?, ?)`,
+		sessionID, body.RepoID, worktreePath, body.NewBranch, body.CLIType, pid, now, body.SourceBranch, baseCommit)
 
 	// Monitor for process exit and update DB
 	go func() {
@@ -136,6 +140,8 @@ func (h *SessionsHandler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 		Status:       "running",
 		PID:          &pid,
 		CreatedAt:    now,
+		SourceBranch: body.SourceBranch,
+		BaseCommit:   baseCommit,
 	})
 }
 
@@ -212,4 +218,45 @@ func resolveCommand(db *sql.DB, cliType string) string {
 		return val
 	}
 	return cliType
+}
+
+func (h *SessionsHandler) HandleDiff(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	var worktreePath, baseCommit string
+	err := h.db.QueryRow(`SELECT worktree_path, base_commit FROM sessions WHERE id = ?`, id).
+		Scan(&worktreePath, &baseCommit)
+	if err == sql.ErrNoRows {
+		WriteError(w, http.StatusNotFound, "session not found")
+		return
+	}
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if baseCommit == "" {
+		WriteError(w, http.StatusBadRequest, "no base commit recorded for this session")
+		return
+	}
+
+	files, err := git.Diff(worktreePath, baseCommit)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, fmt.Sprintf("git diff: %v", err))
+		return
+	}
+
+	totalAdds, totalDels := 0, 0
+	for _, f := range files {
+		totalAdds += f.Additions
+		totalDels += f.Deletions
+	}
+
+	WriteJSON(w, http.StatusOK, map[string]any{
+		"files": files,
+		"stats": map[string]int{
+			"files_changed": len(files),
+			"insertions":    totalAdds,
+			"deletions":     totalDels,
+		},
+	})
 }

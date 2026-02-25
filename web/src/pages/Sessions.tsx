@@ -3,8 +3,11 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api, SuperpositionOfflineError } from "../lib/api";
 import Terminal from "../components/Terminal";
 import TerminalPreview from "../components/TerminalPreview";
+import DiffViewer from "../components/DiffViewer";
 import NewSessionModal from "../components/NewSessionModal";
 import { useIdleMonitor } from "../components/IdleMonitorContext";
+
+type ViewMode = "terminal" | "diff";
 
 interface SessionInfo {
   id: string;
@@ -15,6 +18,8 @@ interface SessionInfo {
   created_at: string;
   repo_owner: string;
   repo_name: string;
+  source_branch: string;
+  base_commit: string;
 }
 
 export default function Sessions() {
@@ -24,6 +29,7 @@ export default function Sessions() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [openTabs, setOpenTabs] = useState<string[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [viewModes, setViewModes] = useState<Record<string, ViewMode>>({});
   const { idleSessions } = useIdleMonitor();
 
   const openTab = useCallback(
@@ -171,26 +177,86 @@ export default function Sessions() {
           })}
           <div className="flex-1" />
           {activeTab && (
-            <button
-              onClick={() => handleDelete(activeTab)}
-              className="shrink-0 text-xs text-red-400 hover:text-red-300 px-3 py-1.5 mr-1 rounded border border-zinc-700 hover:border-red-800 transition-colors"
-            >
-              Stop
-            </button>
+            <>
+              {/* View mode toggle */}
+              <div className="flex items-center bg-zinc-800/60 rounded-md p-0.5 mr-2">
+                <button
+                  onClick={() =>
+                    setViewModes((prev) => ({
+                      ...prev,
+                      [activeTab]: "terminal",
+                    }))
+                  }
+                  className={`text-xs px-2.5 py-1 rounded transition-colors ${
+                    (viewModes[activeTab] || "terminal") === "terminal"
+                      ? "bg-zinc-700 text-white"
+                      : "text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  Terminal
+                </button>
+                <button
+                  onClick={() =>
+                    setViewModes((prev) => ({
+                      ...prev,
+                      [activeTab]: "diff",
+                    }))
+                  }
+                  className={`text-xs px-2.5 py-1 rounded transition-colors ${
+                    viewModes[activeTab] === "diff"
+                      ? "bg-zinc-700 text-white"
+                      : "text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  Diff
+                </button>
+              </div>
+              <button
+                onClick={() => handleDelete(activeTab)}
+                className="shrink-0 text-xs text-red-400 hover:text-red-300 px-3 py-1.5 mr-1 rounded border border-zinc-700 hover:border-red-800 transition-colors"
+              >
+                Stop
+              </button>
+            </>
           )}
         </div>
 
-        {/* Terminal area - all terminals stay mounted, CSS-hidden when inactive */}
+        {/* Content area - terminals + diff viewers, CSS-hidden based on mode */}
         <div className="flex-1 relative">
-          {openTabs.map((id) => (
-            <div
-              key={id}
-              className="absolute inset-0 p-1"
-              style={{ display: activeTab === id ? "block" : "none" }}
-            >
-              <Terminal sessionId={id} visible={activeTab === id} />
-            </div>
-          ))}
+          {openTabs.map((id) => {
+            const mode = viewModes[id] || "terminal";
+            const isActive = activeTab === id;
+            return (
+              <div
+                key={id}
+                className="absolute inset-0"
+                style={{ display: isActive ? "block" : "none" }}
+              >
+                <div
+                  className="absolute inset-0 p-1"
+                  style={{
+                    display: mode === "terminal" ? "block" : "none",
+                  }}
+                >
+                  <Terminal
+                    sessionId={id}
+                    visible={isActive && mode === "terminal"}
+                  />
+                </div>
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    display: mode === "diff" ? "block" : "none",
+                  }}
+                >
+                  <DiffViewer
+                    sessionId={id}
+                    visible={isActive && mode === "diff"}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     );
