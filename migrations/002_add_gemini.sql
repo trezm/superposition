@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS sessions_new (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-INSERT OR IGNORE INTO sessions_new SELECT * FROM sessions;
+INSERT OR IGNORE INTO sessions_new (id, repo_id, worktree_path, branch, cli_type, status, pid, created_at)
+    SELECT id, repo_id, worktree_path, branch, cli_type, status, pid, created_at FROM sessions;
 DROP TABLE sessions;
 ALTER TABLE sessions_new RENAME TO sessions;
