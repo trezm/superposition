@@ -36,6 +36,42 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return data;
 }
 
+export interface DiffLine {
+  type: "add" | "delete" | "context";
+  content: string;
+  old_no?: number;
+  new_no?: number;
+}
+
+export interface DiffHunk {
+  header: string;
+  old_start: number;
+  old_count: number;
+  new_start: number;
+  new_count: number;
+  lines: DiffLine[];
+}
+
+export interface DiffFile {
+  path: string;
+  old_path?: string;
+  status: "added" | "modified" | "deleted" | "renamed";
+  additions: number;
+  deletions: number;
+  hunks: DiffHunk[];
+}
+
+export interface DiffStats {
+  files_changed: number;
+  insertions: number;
+  deletions: number;
+}
+
+export interface DiffResponse {
+  files: DiffFile[];
+  stats: DiffStats;
+}
+
 export const api = {
   // Health
   health: () => request<any>("/api/health"),
@@ -115,4 +151,6 @@ export const api = {
       if (!res.ok) throw new Error("Failed to fetch replay");
       return res.arrayBuffer();
     }),
+  getSessionDiff: (id: string) =>
+    request<DiffResponse>(`/api/sessions/${id}/diff`),
 };
