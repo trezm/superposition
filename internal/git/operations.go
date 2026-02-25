@@ -19,21 +19,21 @@ type DiffLine struct {
 }
 
 type DiffHunk struct {
-	Header  string     `json:"header"`
-	OldStart int       `json:"old_start"`
-	OldCount int       `json:"old_count"`
-	NewStart int       `json:"new_start"`
-	NewCount int       `json:"new_count"`
-	Lines   []DiffLine `json:"lines"`
+	Header   string     `json:"header"`
+	OldStart int        `json:"old_start"`
+	OldCount int        `json:"old_count"`
+	NewStart int        `json:"new_start"`
+	NewCount int        `json:"new_count"`
+	Lines    []DiffLine `json:"lines"`
 }
 
 type DiffFile struct {
-	Path       string     `json:"path"`
-	OldPath    string     `json:"old_path,omitempty"`
-	Status     string     `json:"status"` // "added", "modified", "deleted", "renamed"
-	Additions  int        `json:"additions"`
-	Deletions  int        `json:"deletions"`
-	Hunks      []DiffHunk `json:"hunks"`
+	Path      string     `json:"path"`
+	OldPath   string     `json:"old_path,omitempty"`
+	Status    string     `json:"status"` // "added", "modified", "deleted", "renamed"
+	Additions int        `json:"additions"`
+	Deletions int        `json:"deletions"`
+	Hunks     []DiffHunk `json:"hunks"`
 }
 
 func ReposDir() (string, error) {
