@@ -229,7 +229,7 @@ func (h *SessionsHandler) HandleDiff(w http.ResponseWriter, r *http.Request) {
 	if baseCommit == "" {
 		baseCommit = inferBaseCommit(h.db, worktreePath, sourceBranch, repoID)
 		if baseCommit == "" {
-			WriteJSON(w, http.StatusOK, git.DiffResult{})
+			WriteJSON(w, http.StatusOK, git.DiffResult{Files: []git.DiffFile{}})
 			return
 		}
 		// Backfill so we don't recompute next time
