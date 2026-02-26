@@ -59,6 +59,16 @@ func ResolveCommit(repoOrWorktreePath, ref string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// MergeBase finds the best common ancestor between two commits.
+func MergeBase(repoOrWorktreePath, ref1, ref2 string) (string, error) {
+	cmd := exec.Command("git", "-C", repoOrWorktreePath, "merge-base", ref1, ref2)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("git merge-base %s %s: %w", ref1, ref2, err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // Diff computes the diff between a base commit and the current working tree state.
 func Diff(worktreePath, baseCommit string) (*DiffResult, error) {
 	cmd := exec.Command("git", "-C", worktreePath, "diff", baseCommit)
