@@ -1,65 +1,76 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import { api } from "../lib/api";
-import type { DiffFile, DiffResponse } from "../lib/api";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import {
+  api,
+  type DiffResponse,
+  type DiffFile,
+  type DiffHunk,
+  type DiffLine,
+} from "../lib/api";
+import { extToLang, tokenizeLines } from "../lib/highlighter";
 
-interface DiffViewerProps {
-  sessionId: string;
-  visible?: boolean;
+type ViewMode = "unified" | "split";
+
+interface TokenSpan {
+  content: string;
+  color?: string;
 }
-
-const STATUS_LABELS: Record<string, string> = {
-  added: "A",
-  modified: "M",
-  deleted: "D",
-  renamed: "R",
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  added: "bg-green-900/60 text-green-400",
-  modified: "bg-blue-900/60 text-blue-400",
-  deleted: "bg-red-900/60 text-red-400",
-  renamed: "bg-yellow-900/60 text-yellow-400",
-};
 
 export default function DiffViewer({
   sessionId,
-  visible = true,
-}: DiffViewerProps) {
-  const [data, setData] = useState<DiffResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+  visible,
+}: {
+  sessionId: string;
+  visible: boolean;
+}) {
+  const [diff, setDiff] = useState<DiffResponse | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("unified");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const hasFetched = useRef(false);
 
   const fetchDiff = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const resp = await api.getSessionDiff(sessionId);
-      setData(resp);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load diff");
+      const data = await api.getSessionDiff(sessionId);
+      setDiff(data);
+    } catch (e: any) {
+      setError(e.message || "Failed to load diff");
     } finally {
       setLoading(false);
     }
   }, [sessionId]);
 
   useEffect(() => {
-    if (visible && !hasFetched.current) {
-      hasFetched.current = true;
-      fetchDiff();
-    }
+    if (visible) fetchDiff();
   }, [visible, fetchDiff]);
 
-  const toggleFile = (path: string) => {
+  const toggleCollapse = (path: string) => {
     setCollapsed((prev) => ({ ...prev, [path]: !prev[path] }));
   };
 
-  if (!visible) return null;
-
-  if (loading && !data) {
+  if (loading) {
     return (
-      <div className="flex items-center justify-center h-full text-zinc-500 text-sm">
+      <div className="flex items-center justify-center h-full text-zinc-400">
+        <svg
+          className="animate-spin h-5 w-5 mr-2"
+          viewBox="0 0 24 24"
+          fill="none"
+        >
+          <circle
+            className="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            strokeWidth="4"
+          />
+          <path
+            className="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+          />
+        </svg>
         Loading diff...
       </div>
     );
@@ -67,11 +78,11 @@ export default function DiffViewer({
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-3">
-        <p className="text-zinc-500 text-sm">{error}</p>
+      <div className="flex flex-col items-center justify-center h-full text-zinc-400 gap-3">
+        <p className="text-red-400">{error}</p>
         <button
           onClick={fetchDiff}
-          className="text-xs text-blue-400 hover:text-blue-300 px-3 py-1.5 rounded border border-zinc-700 hover:border-blue-800 transition-colors"
+          className="text-xs px-3 py-1.5 rounded border border-zinc-700 hover:border-zinc-500 transition-colors"
         >
           Retry
         </button>
@@ -79,7 +90,7 @@ export default function DiffViewer({
     );
   }
 
-  if (!data || data.files.length === 0) {
+  if (!diff || !diff.files?.length) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3">
         <p className="text-zinc-500 text-sm">No changes yet</p>
@@ -95,38 +106,57 @@ export default function DiffViewer({
 
   return (
     <div className="h-full flex flex-col min-h-0">
-      {/* Stats bar */}
-      <div className="flex items-center gap-3 px-4 py-2.5 border-b border-zinc-800 bg-zinc-900/80 shrink-0">
-        <span className="text-sm text-zinc-400">
-          {data.stats.files_changed} file
-          {data.stats.files_changed !== 1 ? "s" : ""} changed
+      {/* Header bar */}
+      <div className="shrink-0 flex items-center gap-3 px-4 py-2 border-b border-zinc-800 bg-zinc-900/80 text-sm">
+        <span className="text-zinc-400">
+          {diff.stats.files_changed} file
+          {diff.stats.files_changed !== 1 ? "s" : ""} changed
         </span>
-        {data.stats.insertions > 0 && (
-          <span className="text-sm text-green-400">
-            +{data.stats.insertions}
-          </span>
-        )}
-        {data.stats.deletions > 0 && (
-          <span className="text-sm text-red-400">-{data.stats.deletions}</span>
-        )}
+        <span className="text-emerald-400">+{diff.stats.additions}</span>
+        <span className="text-red-400">-{diff.stats.deletions}</span>
+
         <div className="flex-1" />
+
+        <div className="flex items-center rounded border border-zinc-700 overflow-hidden">
+          <button
+            onClick={() => setViewMode("unified")}
+            className={`px-2.5 py-1 text-xs transition-colors ${
+              viewMode === "unified"
+                ? "bg-zinc-700 text-white"
+                : "text-zinc-400 hover:text-white"
+            }`}
+          >
+            Unified
+          </button>
+          <button
+            onClick={() => setViewMode("split")}
+            className={`px-2.5 py-1 text-xs transition-colors ${
+              viewMode === "split"
+                ? "bg-zinc-700 text-white"
+                : "text-zinc-400 hover:text-white"
+            }`}
+          >
+            Split
+          </button>
+        </div>
+
         <button
           onClick={fetchDiff}
-          disabled={loading}
-          className="text-xs text-zinc-400 hover:text-white px-3 py-1.5 rounded border border-zinc-700 hover:border-zinc-600 transition-colors disabled:opacity-50"
+          className="text-xs text-zinc-400 hover:text-white px-2 py-1 rounded border border-zinc-700 hover:border-zinc-500 transition-colors"
         >
-          {loading ? "Loading..." : "Refresh"}
+          Refresh
         </button>
       </div>
 
       {/* File list */}
-      <div className="flex-1 overflow-y-auto">
-        {data.files.map((file) => (
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {diff.files.map((file) => (
           <FileSection
             key={file.path}
             file={file}
-            collapsed={!!collapsed[file.path]}
-            onToggle={() => toggleFile(file.path)}
+            viewMode={viewMode}
+            isCollapsed={collapsed[file.path] ?? false}
+            onToggle={() => toggleCollapse(file.path)}
           />
         ))}
       </div>
@@ -134,13 +164,35 @@ export default function DiffViewer({
   );
 }
 
+function statusBadge(status: string) {
+  const map: Record<string, { label: string; color: string }> = {
+    added: { label: "A", color: "text-emerald-400 border-emerald-800" },
+    modified: { label: "M", color: "text-blue-400 border-blue-800" },
+    deleted: { label: "D", color: "text-red-400 border-red-800" },
+    renamed: { label: "R", color: "text-amber-400 border-amber-800" },
+  };
+  const badge = map[status] ?? {
+    label: status[0]?.toUpperCase() ?? "?",
+    color: "text-zinc-400 border-zinc-700",
+  };
+  return (
+    <span
+      className={`inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold rounded border ${badge.color}`}
+    >
+      {badge.label}
+    </span>
+  );
+}
+
 function FileSection({
   file,
-  collapsed,
+  viewMode,
+  isCollapsed,
   onToggle,
 }: {
   file: DiffFile;
-  collapsed: boolean;
+  viewMode: ViewMode;
+  isCollapsed: boolean;
   onToggle: () => void;
 }) {
   return (
@@ -148,85 +200,344 @@ function FileSection({
       {/* File header */}
       <button
         onClick={onToggle}
-        className="w-full flex items-center gap-2 px-4 py-2 bg-zinc-900/50 hover:bg-zinc-800/50 transition-colors text-left"
+        className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-zinc-800/50 transition-colors"
       >
-        <span className="text-zinc-500 text-xs shrink-0">
-          {collapsed ? "▶" : "▼"}
-        </span>
-        <span
-          className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${STATUS_COLORS[file.status] || "bg-zinc-800 text-zinc-400"}`}
-        >
-          {STATUS_LABELS[file.status] || "?"}
-        </span>
-        <span className="text-sm text-zinc-200 font-mono truncate">
+        <span className="text-zinc-500 text-xs">{isCollapsed ? "+" : "-"}</span>
+        {statusBadge(file.status)}
+        <span className="text-zinc-200 font-mono text-xs truncate">
           {file.old_path && file.old_path !== file.path
             ? `${file.old_path} → ${file.path}`
             : file.path}
         </span>
-        <div className="flex-1" />
-        {file.additions > 0 && (
-          <span className="text-xs text-green-400 shrink-0">
-            +{file.additions}
-          </span>
-        )}
-        {file.deletions > 0 && (
-          <span className="text-xs text-red-400 shrink-0 ml-1">
-            -{file.deletions}
-          </span>
-        )}
+        <span className="ml-auto flex items-center gap-2 shrink-0 text-xs">
+          {file.additions > 0 && (
+            <span className="text-emerald-400">+{file.additions}</span>
+          )}
+          {file.deletions > 0 && (
+            <span className="text-red-400">-{file.deletions}</span>
+          )}
+        </span>
       </button>
 
-      {/* Hunks */}
-      {!collapsed && (
-        <div className="font-mono text-xs leading-5">
-          {file.hunks.map((hunk, hi) => (
-            <div key={hi}>
-              {/* Hunk header */}
-              <div className="px-4 py-1 bg-blue-950/30 text-blue-400 select-none">
-                {hunk.header}
-              </div>
-              {/* Lines */}
-              {hunk.lines.map((line, li) => {
-                const bgClass =
-                  line.type === "add"
-                    ? "bg-green-950/40"
-                    : line.type === "delete"
-                      ? "bg-red-950/40"
-                      : "";
-                const textClass =
-                  line.type === "add"
-                    ? "text-green-400"
-                    : line.type === "delete"
-                      ? "text-red-400"
-                      : "text-zinc-400";
-                const prefix =
-                  line.type === "add"
-                    ? "+"
-                    : line.type === "delete"
-                      ? "-"
-                      : " ";
-                return (
-                  <div
-                    key={li}
-                    className={`flex ${bgClass} hover:brightness-125`}
-                  >
-                    <span className="w-12 shrink-0 text-right pr-2 text-zinc-600 select-none">
-                      {line.old_no || ""}
-                    </span>
-                    <span className="w-12 shrink-0 text-right pr-2 text-zinc-600 select-none border-r border-zinc-800">
-                      {line.new_no || ""}
-                    </span>
-                    <span className={`pl-2 whitespace-pre ${textClass}`}>
-                      {prefix}
-                      {line.content}
-                    </span>
-                  </div>
-                );
-              })}
+      {/* File content */}
+      {!isCollapsed && (
+        <div className="overflow-x-auto">
+          {file.binary ? (
+            <div className="px-4 py-3 text-xs text-zinc-500">
+              Binary file changed
             </div>
-          ))}
+          ) : viewMode === "unified" ? (
+            <UnifiedView file={file} />
+          ) : (
+            <SplitView file={file} />
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+// Syntax highlighting hook for a whole file's lines
+function useHighlightedLines(file: DiffFile) {
+  const [tokenMap, setTokenMap] = useState<Map<string, TokenSpan[]>>(new Map());
+
+  const allLines = useMemo(() => {
+    const lines: string[] = [];
+    for (const hunk of file.hunks) {
+      for (const line of hunk.lines) {
+        lines.push(line.content);
+      }
+    }
+    return lines;
+  }, [file.hunks]);
+
+  useEffect(() => {
+    const lang = extToLang(file.path);
+    if (!lang || allLines.length === 0) return;
+
+    let cancelled = false;
+    const code = allLines.join("\n");
+
+    tokenizeLines(code, lang).then((result) => {
+      if (cancelled) return;
+      const map = new Map<string, TokenSpan[]>();
+      for (let i = 0; i < result.length && i < allLines.length; i++) {
+        // Use index+content as key to handle duplicate lines
+        map.set(`${i}:${allLines[i]}`, result[i]);
+      }
+      setTokenMap(map);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [file.path, allLines]);
+
+  return tokenMap;
+}
+
+function renderTokens(tokens: TokenSpan[] | undefined, content: string) {
+  if (!tokens) {
+    return <span>{content}</span>;
+  }
+  return (
+    <>
+      {tokens.map((t, j) => (
+        <span key={j} style={t.color ? { color: t.color } : undefined}>
+          {t.content}
+        </span>
+      ))}
+    </>
+  );
+}
+
+function UnifiedView({ file }: { file: DiffFile }) {
+  const tokenMap = useHighlightedLines(file);
+
+  let lineIdx = 0;
+
+  return (
+    <table className="w-full text-xs font-mono border-collapse">
+      <tbody>
+        {file.hunks.map((hunk, hi) => (
+          <HunkRows
+            key={hi}
+            hunk={hunk}
+            tokenMap={tokenMap}
+            lineIdxRef={{ current: lineIdx }}
+            onAdvance={(n) => {
+              lineIdx += n;
+            }}
+            unified
+          />
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function HunkRows({
+  hunk,
+  tokenMap,
+  lineIdxRef,
+  onAdvance,
+  unified,
+}: {
+  hunk: DiffHunk;
+  tokenMap: Map<string, TokenSpan[]>;
+  lineIdxRef: { current: number };
+  onAdvance: (n: number) => void;
+  unified?: boolean;
+}) {
+  const rows: React.ReactNode[] = [];
+
+  // Hunk header
+  if (unified) {
+    rows.push(
+      <tr key={`hdr-${hunk.header}`} className="bg-zinc-800/30">
+        <td className="w-10 text-right pr-2 text-zinc-600 select-none" />
+        <td className="w-10 text-right pr-2 text-zinc-600 select-none" />
+        <td className="pl-4 py-0.5 text-zinc-500">{hunk.header}</td>
+      </tr>,
+    );
+  }
+
+  hunk.lines.forEach((line, i) => {
+    const idx = lineIdxRef.current;
+    lineIdxRef.current++;
+
+    const tokens = tokenMap.get(`${idx}:${line.content}`);
+    const bgClass =
+      line.type === "add"
+        ? "bg-emerald-500/10"
+        : line.type === "delete"
+          ? "bg-red-500/10"
+          : "";
+
+    if (unified) {
+      rows.push(
+        <tr key={`${idx}-${i}`} className={bgClass}>
+          <td className="w-10 text-right pr-2 text-zinc-600 select-none align-top">
+            {line.old_num || ""}
+          </td>
+          <td className="w-10 text-right pr-2 text-zinc-600 select-none align-top">
+            {line.new_num || ""}
+          </td>
+          <td className="pl-4 py-0 whitespace-pre">
+            <span
+              className={
+                line.type === "add"
+                  ? "text-emerald-300"
+                  : line.type === "delete"
+                    ? "text-red-300"
+                    : ""
+              }
+            >
+              {line.type === "add" ? "+" : line.type === "delete" ? "-" : " "}
+            </span>
+            {renderTokens(tokens, line.content)}
+          </td>
+        </tr>,
+      );
+    }
+  });
+
+  onAdvance(0); // noop, counter already advanced
+  return <>{rows}</>;
+}
+
+// Side-by-side view
+interface SplitRow {
+  left: DiffLine | null;
+  right: DiffLine | null;
+  leftIdx: number;
+  rightIdx: number;
+}
+
+function buildSplitRows(hunks: DiffHunk[]): {
+  rows: SplitRow[];
+  lineIndices: { left: number[]; right: number[] };
+} {
+  const rows: SplitRow[] = [];
+  const leftIndices: number[] = [];
+  const rightIndices: number[] = [];
+  let globalIdx = 0;
+
+  for (const hunk of hunks) {
+    const lines = hunk.lines;
+    let i = 0;
+
+    while (i < lines.length) {
+      const line = lines[i];
+
+      if (line.type === "context") {
+        rows.push({
+          left: line,
+          right: line,
+          leftIdx: globalIdx,
+          rightIdx: globalIdx,
+        });
+        leftIndices.push(globalIdx);
+        rightIndices.push(globalIdx);
+        globalIdx++;
+        i++;
+      } else if (line.type === "delete") {
+        // Collect consecutive deletes and adds
+        const deletes: { line: DiffLine; idx: number }[] = [];
+        while (i < lines.length && lines[i].type === "delete") {
+          deletes.push({ line: lines[i], idx: globalIdx });
+          globalIdx++;
+          i++;
+        }
+        const adds: { line: DiffLine; idx: number }[] = [];
+        while (i < lines.length && lines[i].type === "add") {
+          adds.push({ line: lines[i], idx: globalIdx });
+          globalIdx++;
+          i++;
+        }
+
+        const maxLen = Math.max(deletes.length, adds.length);
+        for (let j = 0; j < maxLen; j++) {
+          rows.push({
+            left: j < deletes.length ? deletes[j].line : null,
+            right: j < adds.length ? adds[j].line : null,
+            leftIdx: j < deletes.length ? deletes[j].idx : -1,
+            rightIdx: j < adds.length ? adds[j].idx : -1,
+          });
+          leftIndices.push(j < deletes.length ? deletes[j].idx : -1);
+          rightIndices.push(j < adds.length ? adds[j].idx : -1);
+        }
+      } else if (line.type === "add") {
+        // Add without preceding delete
+        rows.push({
+          left: null,
+          right: line,
+          leftIdx: -1,
+          rightIdx: globalIdx,
+        });
+        leftIndices.push(-1);
+        rightIndices.push(globalIdx);
+        globalIdx++;
+        i++;
+      } else {
+        globalIdx++;
+        i++;
+      }
+    }
+  }
+
+  return { rows, lineIndices: { left: leftIndices, right: rightIndices } };
+}
+
+function SplitView({ file }: { file: DiffFile }) {
+  const tokenMap = useHighlightedLines(file);
+  const { rows } = useMemo(() => buildSplitRows(file.hunks), [file.hunks]);
+
+  return (
+    <div className="flex">
+      {/* Left panel */}
+      <table className="w-1/2 text-xs font-mono border-collapse border-r border-zinc-800">
+        <tbody>
+          {rows.map((row, i) => {
+            const line = row.left;
+            const bgClass = line
+              ? line.type === "delete"
+                ? "bg-red-500/10"
+                : line.type === "add"
+                  ? "bg-emerald-500/10"
+                  : ""
+              : "bg-zinc-900/50";
+
+            const tokens =
+              line && row.leftIdx >= 0
+                ? tokenMap.get(`${row.leftIdx}:${line.content}`)
+                : undefined;
+
+            return (
+              <tr key={i} className={bgClass}>
+                <td className="w-10 text-right pr-2 text-zinc-600 select-none align-top">
+                  {line?.old_num || ""}
+                </td>
+                <td className="pl-2 py-0 whitespace-pre">
+                  {line ? renderTokens(tokens, line.content) : ""}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      {/* Right panel */}
+      <table className="w-1/2 text-xs font-mono border-collapse">
+        <tbody>
+          {rows.map((row, i) => {
+            const line = row.right;
+            const bgClass = line
+              ? line.type === "add"
+                ? "bg-emerald-500/10"
+                : line.type === "delete"
+                  ? "bg-red-500/10"
+                  : ""
+              : "bg-zinc-900/50";
+
+            const tokens =
+              line && row.rightIdx >= 0
+                ? tokenMap.get(`${row.rightIdx}:${line.content}`)
+                : undefined;
+
+            return (
+              <tr key={i} className={bgClass}>
+                <td className="w-10 text-right pr-2 text-zinc-600 select-none align-top">
+                  {line?.new_num || ""}
+                </td>
+                <td className="pl-2 py-0 whitespace-pre">
+                  {line ? renderTokens(tokens, line.content) : ""}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
