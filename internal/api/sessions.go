@@ -212,9 +212,10 @@ func (h *SessionsHandler) HandleDelete(w http.ResponseWriter, r *http.Request) {
 func (h *SessionsHandler) HandleDiff(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	var worktreePath, baseCommit string
-	err := h.db.QueryRow(`SELECT worktree_path, base_commit FROM sessions WHERE id = ?`, id).
-		Scan(&worktreePath, &baseCommit)
+	var worktreePath, baseCommit, sourceBranch string
+	var repoID int64
+	err := h.db.QueryRow(`SELECT worktree_path, base_commit, source_branch, repo_id FROM sessions WHERE id = ?`, id).
+		Scan(&worktreePath, &baseCommit, &sourceBranch, &repoID)
 	if err == sql.ErrNoRows {
 		WriteError(w, http.StatusNotFound, "session not found")
 		return
@@ -223,9 +224,16 @@ func (h *SessionsHandler) HandleDiff(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	// For sessions created before base_commit was tracked, try to compute it
 	if baseCommit == "" {
-		WriteJSON(w, http.StatusOK, git.DiffResult{})
-		return
+		baseCommit = inferBaseCommit(h.db, worktreePath, sourceBranch, repoID)
+		if baseCommit == "" {
+			WriteJSON(w, http.StatusOK, git.DiffResult{})
+			return
+		}
+		// Backfill so we don't recompute next time
+		h.db.Exec(`UPDATE sessions SET base_commit = ? WHERE id = ?`, baseCommit, id)
 	}
 
 	diff, err := git.Diff(worktreePath, baseCommit)
@@ -234,6 +242,33 @@ func (h *SessionsHandler) HandleDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, diff)
+}
+
+// inferBaseCommit tries to determine the base commit for a session that
+// was created before base_commit tracking was added. It uses git merge-base
+// to find where the worktree branch diverged from the source branch.
+func inferBaseCommit(db *sql.DB, worktreePath, sourceBranch string, repoID int64) string {
+	// Try source_branch first, fall back to repo's default branch
+	ref := sourceBranch
+	if ref == "" {
+		var defaultBranch string
+		db.QueryRow(`SELECT default_branch FROM repositories WHERE id = ?`, repoID).Scan(&defaultBranch)
+		if defaultBranch != "" {
+			ref = defaultBranch
+		} else {
+			ref = "main"
+		}
+	}
+
+	// Try merge-base with origin/<ref>
+	if commit, err := git.MergeBase(worktreePath, "HEAD", "origin/"+ref); err == nil {
+		return commit
+	}
+	// Try without origin/ prefix
+	if commit, err := git.MergeBase(worktreePath, "HEAD", ref); err == nil {
+		return commit
+	}
+	return ""
 }
 
 // resolveCommand returns the override command string for a CLI type if one
