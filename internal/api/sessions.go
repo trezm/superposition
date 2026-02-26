@@ -209,17 +209,6 @@ func (h *SessionsHandler) HandleDelete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// resolveCommand returns the override command string for a CLI type if one
-// exists in settings, otherwise returns the bare CLI type name.
-func resolveCommand(db *sql.DB, cliType string) string {
-	var val string
-	err := db.QueryRow(`SELECT value FROM settings WHERE key = ?`, "cli_command."+cliType).Scan(&val)
-	if err == nil && val != "" {
-		return val
-	}
-	return cliType
-}
-
 func (h *SessionsHandler) HandleDiff(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
@@ -235,28 +224,25 @@ func (h *SessionsHandler) HandleDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if baseCommit == "" {
-		WriteError(w, http.StatusBadRequest, "no base commit recorded for this session")
+		WriteJSON(w, http.StatusOK, git.DiffResult{})
 		return
 	}
 
-	files, err := git.Diff(worktreePath, baseCommit)
+	diff, err := git.Diff(worktreePath, baseCommit)
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, fmt.Sprintf("git diff: %v", err))
+		WriteError(w, http.StatusInternalServerError, fmt.Sprintf("diff: %v", err))
 		return
 	}
+	WriteJSON(w, http.StatusOK, diff)
+}
 
-	totalAdds, totalDels := 0, 0
-	for _, f := range files {
-		totalAdds += f.Additions
-		totalDels += f.Deletions
+// resolveCommand returns the override command string for a CLI type if one
+// exists in settings, otherwise returns the bare CLI type name.
+func resolveCommand(db *sql.DB, cliType string) string {
+	var val string
+	err := db.QueryRow(`SELECT value FROM settings WHERE key = ?`, "cli_command."+cliType).Scan(&val)
+	if err == nil && val != "" {
+		return val
 	}
-
-	WriteJSON(w, http.StatusOK, map[string]any{
-		"files": files,
-		"stats": map[string]int{
-			"files_changed": len(files),
-			"insertions":    totalAdds,
-			"deletions":     totalDels,
-		},
-	})
+	return cliType
 }

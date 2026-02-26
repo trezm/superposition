@@ -36,11 +36,12 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return data;
 }
 
+// Diff types (match Go JSON output from internal/git/diff.go)
 export interface DiffLine {
   type: "add" | "delete" | "context";
   content: string;
-  old_no?: number;
-  new_no?: number;
+  old_num?: number;
+  new_num?: number;
 }
 
 export interface DiffHunk {
@@ -55,7 +56,8 @@ export interface DiffHunk {
 export interface DiffFile {
   path: string;
   old_path?: string;
-  status: "added" | "modified" | "deleted" | "renamed";
+  status: string;
+  binary: boolean;
   additions: number;
   deletions: number;
   hunks: DiffHunk[];
@@ -63,7 +65,7 @@ export interface DiffFile {
 
 export interface DiffStats {
   files_changed: number;
-  insertions: number;
+  additions: number;
   deletions: number;
 }
 
