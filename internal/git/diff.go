@@ -88,7 +88,7 @@ func Diff(worktreePath, baseCommit string) (*DiffResult, error) {
 
 // parseDiff parses unified diff output into structured types.
 func parseDiff(raw string) (*DiffResult, error) {
-	result := &DiffResult{}
+	result := &DiffResult{Files: []DiffFile{}}
 
 	if strings.TrimSpace(raw) == "" {
 		return result, nil
@@ -111,7 +111,7 @@ func parseDiff(raw string) (*DiffResult, error) {
 			if currentFile != nil {
 				result.Files = append(result.Files, *currentFile)
 			}
-			currentFile = &DiffFile{Status: "modified"}
+			currentFile = &DiffFile{Status: "modified", Hunks: []DiffHunk{}}
 			currentHunk = nil
 			continue
 		}
@@ -270,7 +270,7 @@ func parseHunkHeader(line string) (*DiffHunk, error) {
 		return nil, fmt.Errorf("malformed hunk range")
 	}
 
-	hunk := &DiffHunk{Header: line}
+	hunk := &DiffHunk{Header: line, Lines: []DiffLine{}}
 
 	// Parse old range (-start,count)
 	oldRange := strings.TrimPrefix(parts[0], "-")
