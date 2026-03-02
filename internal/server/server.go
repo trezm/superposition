@@ -64,6 +64,7 @@ func (s *Server) routes(spaHandler http.Handler) {
 	s.mux.HandleFunc("POST /api/sessions", sessions.HandleCreate)
 	s.mux.HandleFunc("GET /api/sessions/{id}/replay", sessions.HandleReplay)
 	s.mux.HandleFunc("GET /api/sessions/{id}/diff", sessions.HandleDiff)
+	s.mux.HandleFunc("POST /api/sessions/{id}/input", sessions.HandleInput)
 	s.mux.HandleFunc("DELETE /api/sessions/{id}", sessions.HandleDelete)
 
 	// WebSocket

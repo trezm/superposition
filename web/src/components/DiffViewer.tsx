@@ -7,12 +7,34 @@ import {
   type DiffLine,
 } from "../lib/api";
 import { extToLang, tokenizeLines } from "../lib/highlighter";
+import { useToast } from "./Toast";
 
 type ViewMode = "unified" | "split";
 
 interface TokenSpan {
   content: string;
   color?: string;
+}
+
+interface ReviewComment {
+  filePath: string;
+  lineNum: number;
+  lineContent: string;
+  body: string;
+}
+
+interface ReviewCallbacks {
+  comments: Map<string, ReviewComment>;
+  activeForm: string | null;
+  onOpenForm: (
+    key: string,
+    filePath: string,
+    lineNum: number,
+    lineContent: string,
+  ) => void;
+  onSaveComment: (key: string, body: string) => void;
+  onDeleteComment: (key: string) => void;
+  onCancelForm: () => void;
 }
 
 export default function DiffViewer({
@@ -28,9 +50,19 @@ export default function DiffViewer({
   const [viewMode, setViewMode] = useState<ViewMode>("unified");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
+  // Review state
+  const [comments, setComments] = useState<Map<string, ReviewComment>>(
+    new Map(),
+  );
+  const [activeForm, setActiveForm] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const { toast } = useToast();
+
   const fetchDiff = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setComments(new Map());
+    setActiveForm(null);
     try {
       const data = await api.getSessionDiff(sessionId);
       setDiff(data);
@@ -48,6 +80,118 @@ export default function DiffViewer({
   const toggleCollapse = (path: string) => {
     setCollapsed((prev) => ({ ...prev, [path]: !prev[path] }));
   };
+
+  const handleOpenForm = (
+    key: string,
+    filePath: string,
+    lineNum: number,
+    lineContent: string,
+  ) => {
+    // If there's already a comment for this line, open it for editing
+    if (comments.has(key)) {
+      setActiveForm(key);
+      return;
+    }
+    // Pre-populate the comment metadata (body will be filled on save)
+    setComments((prev) => {
+      const next = new Map(prev);
+      next.set(key, { filePath, lineNum, lineContent, body: "" });
+      return next;
+    });
+    setActiveForm(key);
+  };
+
+  const handleSaveComment = (key: string, body: string) => {
+    setComments((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(key);
+      if (existing) {
+        next.set(key, { ...existing, body });
+      }
+      return next;
+    });
+    setActiveForm(null);
+  };
+
+  const handleDeleteComment = (key: string) => {
+    setComments((prev) => {
+      const next = new Map(prev);
+      next.delete(key);
+      return next;
+    });
+    if (activeForm === key) setActiveForm(null);
+  };
+
+  const handleCancelForm = () => {
+    // If the comment has no body yet, remove it entirely
+    if (activeForm) {
+      const comment = comments.get(activeForm);
+      if (comment && !comment.body) {
+        setComments((prev) => {
+          const next = new Map(prev);
+          next.delete(activeForm);
+          return next;
+        });
+      }
+    }
+    setActiveForm(null);
+  };
+
+  const handleSubmitReview = async () => {
+    // Filter out comments with empty bodies
+    const validComments = Array.from(comments.values()).filter((c) => c.body);
+    if (validComments.length === 0) return;
+
+    // Group by file path
+    const grouped = new Map<string, ReviewComment[]>();
+    for (const c of validComments) {
+      const existing = grouped.get(c.filePath) || [];
+      existing.push(c);
+      grouped.set(c.filePath, existing);
+    }
+
+    // Sort each group by line number
+    for (const [, group] of grouped) {
+      group.sort((a, b) => a.lineNum - b.lineNum);
+    }
+
+    // Build the review message
+    let message = "I've reviewed the diff. Here are my comments:\n";
+    for (const [filePath, group] of grouped) {
+      message += `\n## ${filePath}\n`;
+      for (const c of group) {
+        const trimmed = c.lineContent.trim();
+        message += `\n**Line ${c.lineNum}**${trimmed ? ` (\`${trimmed}\`)` : ""}:\n> ${c.body}\n`;
+      }
+    }
+    message += "\nPlease address these review comments.\n";
+
+    setSubmitting(true);
+    try {
+      await api.sendSessionInput(sessionId, message);
+      setComments(new Map());
+      setActiveForm(null);
+      toast("Review submitted", "success");
+    } catch (e: any) {
+      toast(e.message || "Failed to submit review", "error");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const reviewCallbacks: ReviewCallbacks = {
+    comments,
+    activeForm,
+    onOpenForm: handleOpenForm,
+    onSaveComment: handleSaveComment,
+    onDeleteComment: handleDeleteComment,
+    onCancelForm: handleCancelForm,
+  };
+
+  // Count comments with actual bodies
+  const commentCount = Array.from(comments.values()).filter(
+    (c) => c.body,
+  ).length;
 
   if (loading) {
     return (
@@ -117,6 +261,21 @@ export default function DiffViewer({
 
         <div className="flex-1" />
 
+        {commentCount > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-zinc-400">
+              {commentCount} comment{commentCount !== 1 ? "s" : ""}
+            </span>
+            <button
+              onClick={handleSubmitReview}
+              disabled={submitting}
+              className="text-xs px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors disabled:opacity-50"
+            >
+              {submitting ? "Submitting..." : "Submit Review"}
+            </button>
+          </div>
+        )}
+
         <div className="flex items-center rounded border border-zinc-700 overflow-hidden">
           <button
             onClick={() => setViewMode("unified")}
@@ -157,6 +316,7 @@ export default function DiffViewer({
             viewMode={viewMode}
             isCollapsed={collapsed[file.path] ?? false}
             onToggle={() => toggleCollapse(file.path)}
+            review={reviewCallbacks}
           />
         ))}
       </div>
@@ -189,11 +349,13 @@ function FileSection({
   viewMode,
   isCollapsed,
   onToggle,
+  review,
 }: {
   file: DiffFile;
   viewMode: ViewMode;
   isCollapsed: boolean;
   onToggle: () => void;
+  review: ReviewCallbacks;
 }) {
   return (
     <div className="border-b border-zinc-800">
@@ -227,9 +389,9 @@ function FileSection({
               Binary file changed
             </div>
           ) : viewMode === "unified" ? (
-            <UnifiedView file={file} />
+            <UnifiedView file={file} review={review} />
           ) : (
-            <SplitView file={file} />
+            <SplitView file={file} review={review} />
           )}
         </div>
       )}
@@ -291,7 +453,150 @@ function renderTokens(tokens: TokenSpan[] | undefined, content: string) {
   );
 }
 
-function UnifiedView({ file }: { file: DiffFile }) {
+/** Returns the comment key for a diff line: filePath:lineNum */
+function commentKey(filePath: string, line: DiffLine): string {
+  // Use new_num for add/context lines, old_num for delete-only lines
+  const num = line.type === "delete" ? line.old_num : line.new_num;
+  return `${filePath}:${num}`;
+}
+
+function InlineCommentForm({
+  commentKey: key,
+  existingBody,
+  onSave,
+  onCancel,
+  colSpan,
+}: {
+  commentKey: string;
+  existingBody: string;
+  onSave: (key: string, body: string) => void;
+  onCancel: () => void;
+  colSpan: number;
+}) {
+  const [body, setBody] = useState(existingBody);
+
+  return (
+    <tr key={`form-${key}`}>
+      <td colSpan={colSpan} className="px-4 py-2 bg-zinc-800/50">
+        <div className="border border-zinc-600 rounded overflow-hidden">
+          <textarea
+            autoFocus
+            rows={3}
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                if (body.trim()) onSave(key, body.trim());
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                onCancel();
+              }
+            }}
+            className="w-full bg-zinc-900 text-zinc-200 text-xs p-2 resize-none outline-none placeholder-zinc-600"
+            placeholder="Write a review comment..."
+          />
+          <div className="flex items-center gap-2 px-2 py-1.5 bg-zinc-850 border-t border-zinc-700">
+            <button
+              onClick={() => {
+                if (body.trim()) onSave(key, body.trim());
+              }}
+              disabled={!body.trim()}
+              className="text-xs px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors disabled:opacity-50"
+            >
+              Comment
+            </button>
+            <button
+              onClick={onCancel}
+              className="text-xs px-3 py-1 rounded text-zinc-400 hover:text-white transition-colors"
+            >
+              Cancel
+            </button>
+            <span className="text-[10px] text-zinc-600 ml-auto">
+              Ctrl+Enter to save
+            </span>
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function SavedCommentRow({
+  commentKey: key,
+  comment,
+  onEdit,
+  onDelete,
+  colSpan,
+}: {
+  commentKey: string;
+  comment: ReviewComment;
+  onEdit: (
+    key: string,
+    filePath: string,
+    lineNum: number,
+    lineContent: string,
+  ) => void;
+  onDelete: (key: string) => void;
+  colSpan: number;
+}) {
+  return (
+    <tr key={`comment-${key}`}>
+      <td colSpan={colSpan} className="px-4 py-2">
+        <div className="border border-blue-800/50 rounded bg-blue-950/30 p-2">
+          <p className="text-xs text-zinc-200 whitespace-pre-wrap">
+            {comment.body}
+          </p>
+          <div className="flex items-center gap-2 mt-1.5">
+            <button
+              onClick={() =>
+                onEdit(
+                  key,
+                  comment.filePath,
+                  comment.lineNum,
+                  comment.lineContent,
+                )
+              }
+              className="text-[10px] text-zinc-500 hover:text-blue-400 transition-colors"
+            >
+              Edit
+            </button>
+            <button
+              onClick={() => onDelete(key)}
+              className="text-[10px] text-zinc-500 hover:text-red-400 transition-colors"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function AddCommentButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className="absolute left-0 top-0 w-5 h-full flex items-center justify-center opacity-0 group-hover/line:opacity-100 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-opacity cursor-pointer z-10"
+      title="Add review comment"
+    >
+      +
+    </button>
+  );
+}
+
+function UnifiedView({
+  file,
+  review,
+}: {
+  file: DiffFile;
+  review: ReviewCallbacks;
+}) {
   const tokenMap = useHighlightedLines(file);
 
   let lineIdx = 0;
@@ -303,12 +608,14 @@ function UnifiedView({ file }: { file: DiffFile }) {
           <HunkRows
             key={hi}
             hunk={hunk}
+            filePath={file.path}
             tokenMap={tokenMap}
             lineIdxRef={{ current: lineIdx }}
             onAdvance={(n) => {
               lineIdx += n;
             }}
             unified
+            review={review}
           />
         ))}
       </tbody>
@@ -318,16 +625,20 @@ function UnifiedView({ file }: { file: DiffFile }) {
 
 function HunkRows({
   hunk,
+  filePath,
   tokenMap,
   lineIdxRef,
   onAdvance,
   unified,
+  review,
 }: {
   hunk: DiffHunk;
+  filePath: string;
   tokenMap: Map<string, TokenSpan[]>;
   lineIdxRef: { current: number };
   onAdvance: (n: number) => void;
   unified?: boolean;
+  review: ReviewCallbacks;
 }) {
   const rows: React.ReactNode[] = [];
 
@@ -355,9 +666,22 @@ function HunkRows({
           : "";
 
     if (unified) {
+      const key = commentKey(filePath, line);
+      const lineNum = line.type === "delete" ? line.old_num : line.new_num;
+      const hasComment =
+        review.comments.has(key) && review.comments.get(key)!.body;
+      const isFormOpen = review.activeForm === key;
+
       rows.push(
-        <tr key={`${idx}-${i}`} className={bgClass}>
-          <td className="w-10 text-right pr-2 text-zinc-600 select-none align-top">
+        <tr key={`${idx}-${i}`} className={`${bgClass} group/line relative`}>
+          <td className="w-10 text-right pr-2 text-zinc-600 select-none align-top relative">
+            {lineNum && (
+              <AddCommentButton
+                onClick={() =>
+                  review.onOpenForm(key, filePath, lineNum, line.content)
+                }
+              />
+            )}
             {line.old_num || ""}
           </td>
           <td className="w-10 text-right pr-2 text-zinc-600 select-none align-top">
@@ -379,6 +703,31 @@ function HunkRows({
           </td>
         </tr>,
       );
+
+      // Comment form or saved comment
+      if (isFormOpen) {
+        rows.push(
+          <InlineCommentForm
+            key={`form-${key}`}
+            commentKey={key}
+            existingBody={review.comments.get(key)?.body || ""}
+            onSave={review.onSaveComment}
+            onCancel={review.onCancelForm}
+            colSpan={3}
+          />,
+        );
+      } else if (hasComment) {
+        rows.push(
+          <SavedCommentRow
+            key={`comment-${key}`}
+            commentKey={key}
+            comment={review.comments.get(key)!}
+            onEdit={review.onOpenForm}
+            onDelete={review.onDeleteComment}
+            colSpan={3}
+          />,
+        );
+      }
     }
   });
 
@@ -469,7 +818,13 @@ function buildSplitRows(hunks: DiffHunk[]): {
   return { rows, lineIndices: { left: leftIndices, right: rightIndices } };
 }
 
-function SplitView({ file }: { file: DiffFile }) {
+function SplitView({
+  file,
+  review,
+}: {
+  file: DiffFile;
+  review: ReviewCallbacks;
+}) {
   const tokenMap = useHighlightedLines(file);
   const { rows } = useMemo(() => buildSplitRows(file.hunks), [file.hunks]);
 
@@ -493,15 +848,24 @@ function SplitView({ file }: { file: DiffFile }) {
                 ? tokenMap.get(`${row.leftIdx}:${line.content}`)
                 : undefined;
 
+            const key = line?.old_num ? `${file.path}:${line.old_num}` : null;
+            const hasComment =
+              key && review.comments.has(key) && review.comments.get(key)!.body;
+            const isFormOpen = key && review.activeForm === key;
+
             return (
-              <tr key={i} className={bgClass}>
-                <td className="w-10 text-right pr-2 text-zinc-600 select-none align-top">
-                  {line?.old_num || ""}
-                </td>
-                <td className="pl-2 py-0 whitespace-pre">
-                  {line ? renderTokens(tokens, line.content) : ""}
-                </td>
-              </tr>
+              <SplitLineRows
+                key={i}
+                line={line}
+                lineNum={line?.old_num}
+                bgClass={bgClass}
+                tokens={tokens}
+                commentKey={key}
+                hasComment={!!hasComment}
+                isFormOpen={!!isFormOpen}
+                filePath={file.path}
+                review={review}
+              />
             );
           })}
         </tbody>
@@ -525,19 +889,88 @@ function SplitView({ file }: { file: DiffFile }) {
                 ? tokenMap.get(`${row.rightIdx}:${line.content}`)
                 : undefined;
 
+            const key = line?.new_num ? `${file.path}:${line.new_num}` : null;
+            const hasComment =
+              key && review.comments.has(key) && review.comments.get(key)!.body;
+            const isFormOpen = key && review.activeForm === key;
+
             return (
-              <tr key={i} className={bgClass}>
-                <td className="w-10 text-right pr-2 text-zinc-600 select-none align-top">
-                  {line?.new_num || ""}
-                </td>
-                <td className="pl-2 py-0 whitespace-pre">
-                  {line ? renderTokens(tokens, line.content) : ""}
-                </td>
-              </tr>
+              <SplitLineRows
+                key={i}
+                line={line}
+                lineNum={line?.new_num}
+                bgClass={bgClass}
+                tokens={tokens}
+                commentKey={key}
+                hasComment={!!hasComment}
+                isFormOpen={!!isFormOpen}
+                filePath={file.path}
+                review={review}
+              />
             );
           })}
         </tbody>
       </table>
     </div>
+  );
+}
+
+function SplitLineRows({
+  line,
+  lineNum,
+  bgClass,
+  tokens,
+  commentKey: key,
+  hasComment,
+  isFormOpen,
+  filePath,
+  review,
+}: {
+  line: DiffLine | null;
+  lineNum: number | undefined;
+  bgClass: string;
+  tokens: TokenSpan[] | undefined;
+  commentKey: string | null;
+  hasComment: boolean;
+  isFormOpen: boolean;
+  filePath: string;
+  review: ReviewCallbacks;
+}) {
+  return (
+    <>
+      <tr className={`${bgClass} group/line relative`}>
+        <td className="w-10 text-right pr-2 text-zinc-600 select-none align-top relative">
+          {key && lineNum && (
+            <AddCommentButton
+              onClick={() =>
+                review.onOpenForm(key, filePath, lineNum, line?.content || "")
+              }
+            />
+          )}
+          {lineNum || ""}
+        </td>
+        <td className="pl-2 py-0 whitespace-pre">
+          {line ? renderTokens(tokens, line.content) : ""}
+        </td>
+      </tr>
+      {isFormOpen && key && (
+        <InlineCommentForm
+          commentKey={key}
+          existingBody={review.comments.get(key)?.body || ""}
+          onSave={review.onSaveComment}
+          onCancel={review.onCancelForm}
+          colSpan={2}
+        />
+      )}
+      {!isFormOpen && hasComment && key && (
+        <SavedCommentRow
+          commentKey={key}
+          comment={review.comments.get(key)!}
+          onEdit={review.onOpenForm}
+          onDelete={review.onDeleteComment}
+          colSpan={2}
+        />
+      )}
+    </>
   );
 }
