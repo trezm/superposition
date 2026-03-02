@@ -209,6 +209,30 @@ func (h *SessionsHandler) HandleDelete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *SessionsHandler) HandleInput(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	sess := h.manager.Get(id)
+	if sess == nil {
+		WriteError(w, http.StatusNotFound, "session not found or not running")
+		return
+	}
+
+	var body struct {
+		Data string `json:"data"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		WriteError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+
+	if _, err := sess.Write([]byte(body.Data)); err != nil {
+		WriteError(w, http.StatusInternalServerError, fmt.Sprintf("write: %v", err))
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *SessionsHandler) HandleDiff(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 

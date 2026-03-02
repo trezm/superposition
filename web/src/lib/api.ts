@@ -155,4 +155,9 @@ export const api = {
     }),
   getSessionDiff: (id: string) =>
     request<DiffResponse>(`/api/sessions/${id}/diff`),
+  sendSessionInput: (id: string, data: string) =>
+    request<void>(`/api/sessions/${id}/input`, {
+      method: "POST",
+      body: JSON.stringify({ data }),
+    }),
 };
