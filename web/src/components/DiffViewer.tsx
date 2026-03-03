@@ -237,41 +237,82 @@ function FileSection({
   );
 }
 
-// Syntax highlighting hook for a whole file's lines
+// Syntax highlighting hook — tokenizes old (context+delete) and new (context+add)
+// streams separately so the highlighter sees valid code for each side.
 function useHighlightedLines(file: DiffFile) {
   const [tokenMap, setTokenMap] = useState<Map<string, TokenSpan[]>>(new Map());
 
-  const allLines = useMemo(() => {
-    const lines: string[] = [];
+  const streams = useMemo(() => {
+    const oldLines: string[] = [];
+    const newLines: string[] = [];
+    const lineInfo: {
+      globalIdx: number;
+      type: string;
+      content: string;
+      oldStreamIdx?: number;
+      newStreamIdx?: number;
+    }[] = [];
+
+    let globalIdx = 0;
     for (const hunk of file.hunks) {
       for (const line of hunk.lines) {
-        lines.push(line.content);
+        const info: (typeof lineInfo)[0] = {
+          globalIdx,
+          type: line.type,
+          content: line.content,
+        };
+
+        if (line.type === "delete" || line.type === "context") {
+          info.oldStreamIdx = oldLines.length;
+          oldLines.push(line.content);
+        }
+        if (line.type === "add" || line.type === "context") {
+          info.newStreamIdx = newLines.length;
+          newLines.push(line.content);
+        }
+
+        lineInfo.push(info);
+        globalIdx++;
       }
     }
-    return lines;
+
+    return { oldLines, newLines, lineInfo };
   }, [file.hunks]);
 
   useEffect(() => {
     const lang = extToLang(file.path);
-    if (!lang || allLines.length === 0) return;
+    if (!lang || streams.lineInfo.length === 0) return;
 
     let cancelled = false;
-    const code = allLines.join("\n");
 
-    tokenizeLines(code, lang).then((result) => {
+    Promise.all([
+      streams.oldLines.length > 0
+        ? tokenizeLines(streams.oldLines.join("\n"), lang)
+        : Promise.resolve([]),
+      streams.newLines.length > 0
+        ? tokenizeLines(streams.newLines.join("\n"), lang)
+        : Promise.resolve([]),
+    ]).then(([oldTokens, newTokens]) => {
       if (cancelled) return;
       const map = new Map<string, TokenSpan[]>();
-      for (let i = 0; i < result.length && i < allLines.length; i++) {
-        // Use index+content as key to handle duplicate lines
-        map.set(`${i}:${allLines[i]}`, result[i]);
+
+      for (const info of streams.lineInfo) {
+        if (info.type === "delete" && info.oldStreamIdx != null) {
+          const tokens = oldTokens[info.oldStreamIdx];
+          if (tokens) map.set(`${info.globalIdx}:${info.content}`, tokens);
+        } else if (info.newStreamIdx != null) {
+          const tokens = newTokens[info.newStreamIdx];
+          if (tokens) map.set(`${info.globalIdx}:${info.content}`, tokens);
+        }
       }
+
       setTokenMap(map);
     });
 
     return () => {
       cancelled = true;
     };
-  }, [file.path, allLines]);
+  }, [file.path, streams]);
 
   return tokenMap;
 }
@@ -294,7 +335,15 @@ function renderTokens(tokens: TokenSpan[] | undefined, content: string) {
 function UnifiedView({ file }: { file: DiffFile }) {
   const tokenMap = useHighlightedLines(file);
 
-  let lineIdx = 0;
+  const hunkStartIndices = useMemo(() => {
+    const indices: number[] = [];
+    let offset = 0;
+    for (const hunk of file.hunks) {
+      indices.push(offset);
+      offset += hunk.lines.length;
+    }
+    return indices;
+  }, [file.hunks]);
 
   return (
     <table className="w-full text-xs font-mono border-collapse">
@@ -304,10 +353,7 @@ function UnifiedView({ file }: { file: DiffFile }) {
             key={hi}
             hunk={hunk}
             tokenMap={tokenMap}
-            lineIdxRef={{ current: lineIdx }}
-            onAdvance={(n) => {
-              lineIdx += n;
-            }}
+            startIdx={hunkStartIndices[hi]}
             unified
           />
         ))}
@@ -319,14 +365,12 @@ function UnifiedView({ file }: { file: DiffFile }) {
 function HunkRows({
   hunk,
   tokenMap,
-  lineIdxRef,
-  onAdvance,
+  startIdx,
   unified,
 }: {
   hunk: DiffHunk;
   tokenMap: Map<string, TokenSpan[]>;
-  lineIdxRef: { current: number };
-  onAdvance: (n: number) => void;
+  startIdx: number;
   unified?: boolean;
 }) {
   const rows: React.ReactNode[] = [];
@@ -343,9 +387,7 @@ function HunkRows({
   }
 
   hunk.lines.forEach((line, i) => {
-    const idx = lineIdxRef.current;
-    lineIdxRef.current++;
-
+    const idx = startIdx + i;
     const tokens = tokenMap.get(`${idx}:${line.content}`);
     const bgClass =
       line.type === "add"
@@ -382,7 +424,6 @@ function HunkRows({
     }
   });
 
-  onAdvance(0); // noop, counter already advanced
   return <>{rows}</>;
 }
 
