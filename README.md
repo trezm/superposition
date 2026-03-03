@@ -15,6 +15,7 @@ A web-based application for running AI coding sessions (Claude Code and Codex) a
 - **Session Persistence** — A background shepherd process keeps PTY sessions alive across server restarts, so deploys never kill a running session
 - **Repository Management** — Clone and sync GitHub repos via Personal Access Token
 - **Remote Access Gateway** — Optional reverse-tunnel proxy with TLS and login auth for accessing sessions from anywhere, no inbound ports required
+- **Code Review** — GitHub-style diff view with syntax highlighting, unified/split modes, and inline review comments
 - **Single Binary** — Compiles to a standalone Go binary with the React frontend embedded
 
 ## Screenshots
@@ -36,6 +37,18 @@ Create a session by picking a repo, source branch, new branch name, and CLI.
 Interact with Claude Code or Codex directly in the browser.
 
 ![Terminal](docs/screenshots/terminal.png)
+
+### Diff View
+
+Review changes with a GitHub-style diff viewer. Supports unified and split modes with syntax highlighting.
+
+![Diff View](docs/screenshots/diff-view.png)
+
+### Review Comments
+
+Add inline review comments on any line of the diff to leave feedback for yourself or collaborators.
+
+![Review Comment](docs/screenshots/review-comment.png)
 
 ### Repositories
 
