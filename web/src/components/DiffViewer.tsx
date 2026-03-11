@@ -44,8 +44,10 @@ export default function DiffViewer({
   sessionId: string;
   visible: boolean;
 }) {
+  const { toast } = useToast();
   const [diff, setDiff] = useState<DiffResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("unified");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -55,8 +57,22 @@ export default function DiffViewer({
     new Map(),
   );
   const [activeForm, setActiveForm] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const { toast } = useToast();
+
+  const [autoSubmit, setAutoSubmit] = useState(() => {
+    return localStorage.getItem("autoSubmit") === "true";
+  });
+
+  const submitReview = useCallback(async () => {
+    setSubmitting(true);
+    try {
+      await api.sendSessionInput(sessionId, "\r");
+      toast("Review submitted", "success");
+    } catch (e: any) {
+      toast(e.message || "Failed to submit review", "error");
+    } finally {
+      setSubmitting(false);
+    }
+  }, [sessionId, toast]);
 
   const fetchDiff = useCallback(async () => {
     setLoading(true);
@@ -66,16 +82,25 @@ export default function DiffViewer({
     try {
       const data = await api.getSessionDiff(sessionId);
       setDiff(data);
+
+      // If auto-submit is enabled and we have changes, submit immediately
+      if (autoSubmit && data.files?.length > 0) {
+        submitReview();
+      }
     } catch (e: any) {
       setError(e.message || "Failed to load diff");
     } finally {
       setLoading(false);
     }
-  }, [sessionId]);
+  }, [sessionId, autoSubmit, submitReview]);
 
   useEffect(() => {
     if (visible) fetchDiff();
   }, [visible, fetchDiff]);
+
+  useEffect(() => {
+    localStorage.setItem("autoSubmit", String(autoSubmit));
+  }, [autoSubmit]);
 
   const toggleCollapse = (path: string) => {
     setCollapsed((prev) => ({ ...prev, [path]: !prev[path] }));
@@ -168,7 +193,7 @@ export default function DiffViewer({
 
     setSubmitting(true);
     try {
-      await api.sendSessionInput(sessionId, message);
+      await api.postSessionInput(sessionId, message);
       setComments(new Map());
       setActiveForm(null);
       toast("Review submitted", "success");
@@ -262,19 +287,68 @@ export default function DiffViewer({
         <div className="flex-1" />
 
         {commentCount > 0 && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mr-4 border-r border-zinc-700 pr-4">
             <span className="text-xs text-zinc-400">
               {commentCount} comment{commentCount !== 1 ? "s" : ""}
             </span>
             <button
               onClick={handleSubmitReview}
               disabled={submitting}
-              className="text-xs px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors disabled:opacity-50"
+              className="text-xs px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition-colors disabled:opacity-50"
             >
               {submitting ? "Submitting..." : "Submit Review"}
             </button>
           </div>
         )}
+
+        <div className="flex items-center gap-4 mr-2">
+          <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={autoSubmit}
+              onChange={(e) => setAutoSubmit(e.target.checked)}
+              className="rounded border-zinc-700 bg-zinc-800 text-blue-500 focus:ring-blue-600 h-3.5 w-3.5"
+            />
+            Auto-submit on view
+          </label>
+
+          <button
+            onClick={submitReview}
+            disabled={submitting}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
+              submitting
+                ? "bg-zinc-800 text-zinc-500 cursor-not-allowed"
+                : "bg-blue-600 hover:bg-blue-500 text-white"
+            }`}
+          >
+            {submitting ? (
+              <>
+                <svg
+                  className="animate-spin h-3 w-3"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+                Submitting...
+              </>
+            ) : (
+              "Quick Submit (\u23ce)"
+            )}
+          </button>
+        </div>
 
         <div className="flex items-center rounded border border-zinc-700 overflow-hidden">
           <button
