@@ -193,7 +193,7 @@ export default function DiffViewer({
 
     setSubmitting(true);
     try {
-      await api.postSessionInput(sessionId, message);
+      await api.sendSessionInput(sessionId, message);
       setComments(new Map());
       setActiveForm(null);
       toast("Review submitted", "success");
